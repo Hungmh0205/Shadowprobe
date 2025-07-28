@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShadowProbe Web</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <aside class="fixed top-0 left-0 h-screen w-64 bg-gray-900 text-white flex flex-col z-40">
+    <div class="h-20 flex items-center justify-center border-b border-gray-800">
+      <span class="text-2xl font-bold tracking-wide">ShadowProbe</span>
+    </div>
+    <nav class="flex-1 py-6">
+      <ul class="space-y-1">
+        <li>
+          <a href="/dashboard" class="flex items-center px-6 py-3 bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-tachometer-alt mr-3"></i> Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 bg-gray-700 rounded-r-full font-medium">
+            <i class="fas fa-globe mr-3"></i> Websites
+          </a>
+        </li>
+        <li>
+          <a href="/scans" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-search mr-3"></i> Scans
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-bug mr-3"></i> Vulnerabilities
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-desktop mr-3"></i> Monitors
+          </a>
+        </li>
+        <li>
+          <a href="/reports" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-file-alt mr-3"></i> Reports
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </aside>
+  <!-- Main Content -->
+  <div class="ml-64 flex-1 flex flex-col">
+      <!-- Header -->
+      <header class="h-20 bg-white flex items-center justify-end px-8 border-b border-gray-200">
+
+      </header>
+      <!-- Content -->
+      <main class="flex-1 p-10 bg-gray-100">
+        <div class="flex items-center justify-between mb-8">
+          <h1 class="text-3xl font-bold text-gray-900">Websites</h1>
+          <button id="openAddWebsite" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-semibold shadow">Add Website</button>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+          <div class="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0 mb-6">
+            <select id="statusFilter" class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500">
+              <option value="">All Status</option>
+              <option value="completed">Completed</option>
+              <option value="running">Running</option>
+              <option value="failed">Failed</option>
+              <option value="never">Never Scanned</option>
+            </select>
+            <select id="typeFilter" class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500">
+              <option value="">All Types</option>
+              <option value="Domain">Domain</option>
+              <option value="IP Address">IP Address</option>
+            </select>
+            <input type="text" id="searchFilter" placeholder="Search" class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 flex-1" />
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full border border-gray-200 rounded-lg">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Added</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sub-domain</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last scan</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                </tr>
+              </thead>
+              <tbody id="websiteTableBody" class="bg-white divide-y divide-gray-200">
+                <tr>
+                  <td colspan="8" class="text-center py-8 text-gray-400 text-lg">No websites yet</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <!-- Modal Add Website -->
+  <div id="addWebsiteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 hidden">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-auto p-8 relative animate-fadeIn">
+      <button id="closeAddWebsite" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl focus:outline-none">
+        &times;
+      </button>
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">New Website</h2>
+      <form>
+        <div class="mb-4 flex items-center">
+          <label class="w-28 text-gray-700 font-medium">Name</label>
+          <input type="text" class="flex-1 border border-gray-300 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500" placeholder="Name your website" />
+        </div>
+        <div class="mb-4 flex items-center">
+          <label class="w-28 text-gray-700 font-medium">Address</label>
+          <input type="text" class="flex-1 border border-gray-300 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500" placeholder="E.g cystack.net" />
+        </div>
+        <div class="mb-6 flex items-start">
+          <label class="w-28 text-gray-700 font-medium pt-2">Description</label>
+          <textarea class="flex-1 border border-gray-300 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500 min-h-[80px]" placeholder=""></textarea>
+        </div>
+        <div class="flex justify-end space-x-3">
+          <button type="button" id="cancelAddWebsite" class="px-6 py-2 rounded border border-gray-300 bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200">Cancel</button>
+          <button type="button" id="addWebsiteModalAdd" class="px-6 py-2 rounded bg-blue-400 text-white font-semibold hover:bg-blue-500">Add</button>
+          <button type="button" id="addWebsiteModalSubmit" style="display:none" class="px-6 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700">Submit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script>
+    // Modal logic
+    const openBtn = document.getElementById('openAddWebsite');
+    const modal = document.getElementById('addWebsiteModal');
+    const closeBtn = document.getElementById('closeAddWebsite');
+    const cancelBtn = document.getElementById('cancelAddWebsite');
+    openBtn.addEventListener('click', () => {
+      modal.classList.remove('hidden');
+    });
+    closeBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+    cancelBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+    // Optional: close modal when click outside
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.add('hidden');
+      }
+    });
+
+    // --- Menu popup, Edit, Delete ---
+    let currentEditId = null;
+    let currentEditTr = null;
+
+    function closeAllMenus() {
+      document.querySelectorAll('.website-action-menu').forEach(m => m.remove());
+    }
+
+    document.addEventListener('click', function(e) {
+      // Đóng menu nếu click ngoài
+      if (!e.target.closest('.website-action-trigger')) closeAllMenus();
+    });
+
+    function addActionMenuToRow(tr, website) {
+      const actionCell = tr.querySelector('.website-action-trigger');
+      actionCell.addEventListener('click', function(e) {
+        e.stopPropagation();
+        closeAllMenus();
+        // Tạo menu
+        const menu = document.createElement('div');
+        menu.className = 'website-action-menu fixed bg-white rounded shadow-lg border z-50';
+        menu.style.zIndex = 9999;
+        menu.innerHTML = `
+          <div class="px-4 py-2 cursor-pointer hover:bg-gray-100" data-action="edit">Edit</div>
+          <div class="px-4 py-2 cursor-pointer text-red-600 hover:bg-gray-100" data-action="delete">Delete</div>
+        `;
+        document.body.appendChild(menu);
+
+        // Đặt vị trí menu ngay dưới dấu ba chấm
+        const rect = actionCell.getBoundingClientRect();
+        menu.style.top = (rect.bottom + window.scrollY) + 'px';
+        menu.style.left = (rect.left + window.scrollX - menu.offsetWidth + actionCell.offsetWidth) + 'px';
+
+        // Xử lý Edit
+        menu.querySelector('[data-action="edit"]').onclick = function() {
+          closeAllMenus();
+          document.getElementById('addWebsiteModal').classList.remove('hidden');
+          document.querySelector('#addWebsiteModal input[placeholder="Name your website"]').value = website.name;
+          document.querySelector('#addWebsiteModal input[placeholder="E.g cystack.net"]').value = website.address;
+          document.querySelector('#addWebsiteModal textarea').value = website.description || '';
+          document.getElementById('addWebsiteModalSubmit').style.display = '';
+          document.getElementById('addWebsiteModalAdd').style.display = 'none';
+          currentEditId = website.id;
+          currentEditTr = tr;
+        };
+        // Xử lý Delete
+        menu.querySelector('[data-action="delete"]').onclick = function() {
+          closeAllMenus();
+          if (confirm('Are you sure you want to delete this website?')) {
+            fetch(`/api/websites/${website.id}`, { method: 'DELETE' })
+              .then(res => res.json())
+                          .then(data => {
+              if (data.success) {
+                // Refresh the website list
+                loadWebsites();
+              } else {
+                alert(data.error || 'Delete failed');
+              }
+            });
+          }
+        };
+      });
+    }
+
+    // Render 1 website row
+    function renderWebsiteRow(w) {
+      const tr = document.createElement('tr');
+      tr.classList.add('cursor-pointer', 'hover:bg-gray-50');
+      tr.innerHTML = `
+        <td class="px-6 py-4 whitespace-nowrap">
+          <div class="flex items-center">
+            <span class="inline-block w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mr-3">
+              <i class="fas fa-globe text-lg text-gray-500"></i>
+            </span>
+            <div>
+              <div class="text-sm font-medium text-gray-900">${w.name}</div>
+              <div class="text-xs text-gray-500">${w.address}</div>
+            </div>
+          </div>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${w.type}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${w.added_time}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Full Scan</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${w.subdomain_count || 0}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${w.last_scan_time || 'Never'}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm">
+          ${getStatusBadge(w.status)}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium relative">
+          <span class="text-gray-400 cursor-pointer website-action-trigger">•••</span>
+        </td>
+      `;
+      // Sự kiện click vào dòng (trừ nút ba chấm)
+      tr.addEventListener('click', function(e) {
+        if (e.target.closest('.website-action-trigger')) return;
+        window.location.href = `/website/${w.id}`;
+      });
+      addActionMenuToRow(tr, w);
+      return tr;
+    }
+
+    // Global variables for filtering
+    let allWebsites = [];
+    let filteredWebsites = [];
+
+    // Function to get status badge
+    function getStatusBadge(status) {
+      switch(status) {
+        case 'running':
+          return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"><i class="fas fa-spinner fa-spin mr-1"></i>Scanning</span>';
+        case 'completed':
+          return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"><i class="fas fa-check mr-1"></i>Completed</span>';
+        case 'failed':
+          return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"><i class="fas fa-times mr-1"></i>Failed</span>';
+        case 'never':
+          return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><i class="fas fa-minus mr-1"></i>Never Scanned</span>';
+        default:
+          return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"><i class="fas fa-minus mr-1"></i>Unknown</span>';
+      }
+    }
+
+    // Load danh sách website khi vào trang
+    function loadWebsites() {
+      fetch('/api/websites')
+        .then(res => res.json())
+        .then(data => {
+          allWebsites = data.websites || [];
+          filteredWebsites = [...allWebsites];
+          renderWebsiteTable();
+        });
+    }
+
+    // Render website table with current filtered data
+    function renderWebsiteTable() {
+      const tbody = document.getElementById('websiteTableBody');
+      tbody.innerHTML = '';
+      
+      if (filteredWebsites.length > 0) {
+        filteredWebsites.forEach(w => {
+          tbody.appendChild(renderWebsiteRow(w));
+        });
+      } else {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400 text-lg">No websites found</td></tr>';
+      }
+    }
+
+    // Filter websites based on current filter values
+    function filterWebsites() {
+      const statusFilter = document.getElementById('statusFilter').value;
+      const typeFilter = document.getElementById('typeFilter').value;
+      const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
+
+      filteredWebsites = allWebsites.filter(website => {
+        // Status filter
+        if (statusFilter) {
+          if (statusFilter === 'completed' && website.status !== 'completed') return false;
+          if (statusFilter === 'running' && website.status !== 'running') return false;
+          if (statusFilter === 'failed' && website.status !== 'failed') return false;
+          if (statusFilter === 'never' && website.status !== 'never') return false;
+        }
+
+        // Type filter
+        if (typeFilter && website.type !== typeFilter) {
+          return false;
+        }
+
+        // Search filter
+        if (searchFilter) {
+          const searchText = `${website.name} ${website.address} ${website.description || ''}`.toLowerCase();
+          if (!searchText.includes(searchFilter)) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      renderWebsiteTable();
+    }
+
+    // Add event listeners for filters
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('statusFilter').addEventListener('change', filterWebsites);
+      document.getElementById('typeFilter').addEventListener('change', filterWebsites);
+      document.getElementById('searchFilter').addEventListener('input', filterWebsites);
+    });
+
+    loadWebsites();
+
+    // Đã xóa đoạn này để tránh double add
+
+    // Xử lý nút Add (thêm mới)
+    document.getElementById('addWebsiteModalAdd').onclick = function() {
+      const name = document.querySelector('#addWebsiteModal input[placeholder="Name your website"]').value.trim();
+      const address = document.querySelector('#addWebsiteModal input[placeholder="E.g cystack.net"]').value.trim();
+      const desc = document.querySelector('#addWebsiteModal textarea').value.trim();
+      if (!name || !address) {
+        alert('Name và Address là bắt buộc!');
+        return;
+      }
+      fetch('/api/websites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, address, description: desc })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+        // Refresh the website list
+        loadWebsites();
+        document.getElementById('addWebsiteModal').classList.add('hidden');
+        document.querySelector('#addWebsiteModal input[placeholder="Name your website"]').value = '';
+        document.querySelector('#addWebsiteModal input[placeholder="E.g cystack.net"]').value = '';
+        document.querySelector('#addWebsiteModal textarea').value = '';
+      });
+    };
+    // Xử lý nút Submit (edit)
+    document.getElementById('addWebsiteModalSubmit').onclick = function() {
+      if (!currentEditId) return;
+      const name = document.querySelector('#addWebsiteModal input[placeholder="Name your website"]').value.trim();
+      const address = document.querySelector('#addWebsiteModal input[placeholder="E.g cystack.net"]').value.trim();
+      const desc = document.querySelector('#addWebsiteModal textarea').value.trim();
+      if (!name || !address) {
+        alert('Name và Address là bắt buộc!');
+        return;
+      }
+      fetch(`/api/websites/${currentEditId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, address, description: desc })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+        // Refresh the website list to show updated data
+        loadWebsites();
+        document.getElementById('addWebsiteModal').classList.add('hidden');
+        document.querySelector('#addWebsiteModal input[placeholder="Name your website"]').value = '';
+        document.querySelector('#addWebsiteModal input[placeholder="E.g cystack.net"]').value = '';
+        document.querySelector('#addWebsiteModal textarea').value = '';
+        currentEditId = null;
+        currentEditTr = null;
+      });
+    };
+    // Khi đóng modal thì reset lại nút
+    closeBtn.addEventListener('click', () => {
+      document.getElementById('addWebsiteModalSubmit').style.display = 'none';
+      document.getElementById('addWebsiteModalAdd').style.display = '';
+      currentEditId = null;
+      currentEditTr = null;
+    });
+    cancelBtn.addEventListener('click', () => {
+      document.getElementById('addWebsiteModalSubmit').style.display = 'none';
+      document.getElementById('addWebsiteModalAdd').style.display = '';
+      currentEditId = null;
+      currentEditTr = null;
+    });
+  </script>
+  <!-- Chat button (bottom right) -->
+  <div class="fixed bottom-6 right-6">
+    <button class="w-14 h-14 bg-blue-600 rounded-full shadow-lg flex items-center justify-center text-white text-3xl focus:outline-none">
+      <i class="fas fa-comment-dots"></i>
+    </button>
+  </div>
+</body>
+</html>

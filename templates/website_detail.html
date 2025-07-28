@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ website.name }} - Website Detail</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <aside class="fixed top-0 left-0 h-screen w-64 bg-gray-900 text-white flex flex-col z-40">
+    <div class="h-20 flex items-center justify-center border-b border-gray-800">
+      <span class="text-2xl font-bold tracking-wide">ShadowProbe</span>
+    </div>
+    <nav class="flex-1 py-6">
+      <ul class="space-y-1">
+        <li>
+          <a href="/dashboard" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-tachometer-alt mr-3"></i> Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="/" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-globe mr-3"></i> Websites
+          </a>
+        </li>
+        <li>
+          <a href="/scans" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-search mr-3"></i> Scans
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-bug mr-3"></i> Vulnerabilities
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-desktop mr-3"></i> Monitors
+          </a>
+        </li>
+        <li>
+          <a href="/reports" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-file-alt mr-3"></i> Reports
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </aside>
+  <!-- Main Content -->
+  <div class="ml-64 flex-1 flex flex-col">
+    <header class="h-20 bg-white flex items-center px-8 border-b border-gray-200">
+      <a href="/" class="text-blue-600 font-semibold mr-4">&lt; BACK</a>
+      <h1 class="text-2xl font-bold text-gray-900">{{ website.name }}</h1>
+    </header>
+    <main class="flex-1 p-10 bg-gray-100">
+      <!-- Tabs -->
+      <div class="flex space-x-8 border-b border-gray-200 mb-8">
+        <button id="tab-btn-summary" class="pb-3 text-blue-600 font-semibold border-b-2 border-blue-600 focus:outline-none">Summary</button>
+        <button id="tab-btn-subdomains" class="pb-3 text-gray-500 font-semibold border-b-2 border-transparent hover:text-blue-600 hover:border-blue-200 focus:outline-none">Subdomains</button>
+        <button id="tab-btn-vulns" class="pb-3 text-gray-500 font-semibold border-b-2 border-transparent hover:text-blue-600 hover:border-blue-200 focus:outline-none">Vulnerabilities</button>
+        <button id="tab-btn-ports" class="pb-3 text-gray-500 font-semibold border-b-2 border-transparent hover:text-blue-600 hover:border-blue-200 focus:outline-none">Open ports</button>
+      </div>
+      <!-- Tab content: Summary -->
+      <div id="tab-summary">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <!-- Card 1: Identification -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-bold mb-4">Identification</h2>
+            <div class="space-y-2 text-sm text-gray-700">
+              <div><span class="font-semibold">ID:</span> {{ website.id }}</div>
+              <div><span class="font-semibold">Name:</span> {{ website.name }}</div>
+              <div><span class="font-semibold">FQDN:</span> {{ website.address }}</div>
+              <div><span class="font-semibold">IP Address:</span> N/A</div>
+              <div><span class="font-semibold">Reverse DNS:</span> N/A</div>
+              <div><span class="font-semibold">Hostname:</span> N/A</div>
+            </div>
+          </div>
+          <!-- Card 2: Vulnerabilities by severity -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-lg font-bold">Vulnerabilities by severity</h2>
+              <a href="#" class="text-blue-600 text-sm">&raquo; View Details</a>
+            </div>
+            <div class="flex flex-col items-center justify-center h-32">
+              <div class="text-3xl font-bold text-gray-800 mb-2">0</div>
+              <div class="text-gray-400 text-sm mb-4">Total</div>
+              <div class="flex space-x-4 text-xs">
+                <div class="flex items-center"><span class="w-3 h-3 bg-red-500 rounded-full inline-block mr-1"></span>CRITICAL 0</div>
+                <div class="flex items-center"><span class="w-3 h-3 bg-orange-500 rounded-full inline-block mr-1"></span>HIGH 0</div>
+                <div class="flex items-center"><span class="w-3 h-3 bg-yellow-400 rounded-full inline-block mr-1"></span>MEDIUM 0</div>
+                <div class="flex items-center"><span class="w-3 h-3 bg-green-500 rounded-full inline-block mr-1"></span>LOW 0</div>
+                <div class="flex items-center"><span class="w-3 h-3 bg-blue-500 rounded-full inline-block mr-1"></span>INFO 0</div>
+              </div>
+            </div>
+          </div>
+          <!-- Card 3: Website plan -->
+          <div class="bg-gradient-to-br from-blue-400 to-blue-600 rounded-lg shadow p-6 text-white flex flex-col justify-between">
+            <div>
+              <h2 class="text-lg font-bold mb-4">Website plan</h2>
+              <div class="mb-2"><span class="font-semibold">Website:</span> {{ website.name }}</div>
+            </div>
+            <button id="scan-btn" class="mt-6 bg-white text-blue-600 font-semibold rounded px-6 py-2 shadow hover:bg-gray-100">Scan</button>
+          </div>
+        </div>
+      </div>
+      <!-- Tab content: Subdomains -->
+      <div id="tab-subdomains" class="hidden">
+        <div class="p-6">
+          <!-- Subdomain Statistics -->
+          <div class="flex space-x-4 mb-6">
+            <!-- Total Subdomains -->
+            <div class="bg-white rounded-lg shadow p-4 flex-1">
+              <div class="text-2xl font-bold text-blue-600" id="total-subdomains">0</div>
+              <div class="text-sm text-gray-500">Total</div>
+            </div>
+            <!-- Start Time -->
+            <div class="bg-white rounded-lg shadow p-4 flex-1">
+              <div class="text-sm text-gray-500">Start time</div>
+              <div class="text-lg font-bold text-gray-800" id="start-time">N/A</div>
+            </div>
+            <!-- Finish Time -->
+            <div class="bg-white rounded-lg shadow p-4 flex-1">
+              <div class="text-sm text-gray-500">Finish time</div>
+              <div class="text-lg font-bold text-gray-800" id="finish-time">N/A</div>
+            </div>
+            <!-- Scan Duration -->
+            <div class="bg-white rounded-lg shadow p-4 flex-1">
+              <div class="text-sm text-gray-500">Scan duration</div>
+              <div class="text-lg font-bold text-gray-800" id="scan-duration">N/A</div>
+            </div>
+          </div>
+                  <div class="flex items-center space-x-2 mb-4">
+          <input type="text" id="subdomain-search" placeholder="Search subdomains..." class="px-4 py-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-gray-700 flex-1" />
+        </div>
+          <div class="flex flex-col items-center justify-center py-24">
+            <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">
+              <rect x="8" y="24" width="80" height="56" rx="8" fill="#F3F4F6"/>
+              <rect x="8" y="24" width="80" height="12" fill="#E5E7EB"/>
+              <circle cx="20" cy="30" r="2" fill="#D1D5DB"/>
+              <circle cx="28" cy="30" r="2" fill="#D1D5DB"/>
+              <circle cx="36" cy="30" r="2" fill="#D1D5DB"/>
+              <rect x="40" y="56" width="16" height="2" rx="1" fill="#D1D5DB"/>
+              <circle cx="48" cy="48" r="4" fill="#D1D5DB"/>
+            </svg>
+            <div class="text-gray-400 text-lg mb-4">There aren't any results for that query.</div>
+            <button class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded font-semibold shadow">Scan Now</button>
+          </div>
+        </div>
+      </div>
+      <!-- Tab content: Vulnerabilities (placeholder) -->
+      <div id="tab-vulns" class="hidden">
+        <div class="p-6">
+          <div class="flex flex-col items-center justify-center py-24">
+            <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">
+              <rect x="8" y="24" width="80" height="56" rx="8" fill="#F3F4F6"/>
+              <rect x="8" y="24" width="80" height="12" fill="#E5E7EB"/>
+              <circle cx="20" cy="30" r="2" fill="#D1D5DB"/>
+              <circle cx="28" cy="30" r="2" fill="#D1D5DB"/>
+              <circle cx="36" cy="30" r="2" fill="#D1D5DB"/>
+              <rect x="40" y="56" width="16" height="2" rx="1" fill="#D1D5DB"/>
+              <circle cx="48" cy="48" r="4" fill="#D1D5DB"/>
+            </svg>
+            <div class="text-gray-400 text-lg mb-4">Vulnerabilities tab content...</div>
+          </div>
+        </div>
+      </div>
+      <!-- Tab content: Open ports -->
+      <div id="tab-ports" class="hidden">
+        <div class="p-6">
+          <div class="flex space-x-4 mb-4">
+            <div class="flex flex-col">
+              <label class="text-xs text-gray-500 mb-1 ml-1">IP Address</label>
+              <select data-filter="ip" class="border border-gray-200 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[160px]">
+                <option>All</option>
+              </select>
+            </div>
+            <div class="flex flex-col">
+              <label class="text-xs text-gray-500 mb-1 ml-1">Services</label>
+              <select data-filter="service" class="border border-gray-200 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[160px]">
+                <option>All</option>
+              </select>
+            </div>
+            <input type="text" placeholder="Search" data-filter="search" class="border border-gray-200 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 flex-1 self-end" />
+          </div>
+          <div class="bg-white rounded-lg shadow">
+            <table class="min-w-full">
+              <thead>
+                <tr class="border-b">
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ip</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Open port</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Procoto</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
+                  <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Services</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Nếu chưa có dữ liệu, hiển thị trạng thái empty -->
+                <tr>
+                  <td colspan="5" class="py-16">
+                    <div class="flex flex-col items-center justify-center">
+                      <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">
+                        <rect x="8" y="24" width="80" height="56" rx="8" fill="#F3F4F6"/>
+                        <rect x="8" y="24" width="80" height="12" fill="#E5E7EB"/>
+                        <circle cx="20" cy="30" r="2" fill="#D1D5DB"/>
+                        <circle cx="28" cy="30" r="2" fill="#D1D5DB"/>
+                        <circle cx="36" cy="30" r="2" fill="#D1D5DB"/>
+                        <rect x="40" y="56" width="16" height="2" rx="1" fill="#D1D5DB"/>
+                        <circle cx="48" cy="48" r="4" fill="#D1D5DB"/>
+                      </svg>
+                      <div class="text-gray-400 text-lg mb-4">There aren't any results for that query.</div>
+                      <button class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded font-semibold shadow">Scan Now</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <script>
+        // Tab switching logic
+        const tabBtns = [
+          { btn: document.getElementById('tab-btn-summary'), tab: document.getElementById('tab-summary') },
+          { btn: document.getElementById('tab-btn-subdomains'), tab: document.getElementById('tab-subdomains') },
+          { btn: document.getElementById('tab-btn-vulns'), tab: document.getElementById('tab-vulns') },
+          { btn: document.getElementById('tab-btn-ports'), tab: document.getElementById('tab-ports') },
+        ];
+        tabBtns.forEach(({btn, tab}, idx) => {
+          btn.addEventListener('click', () => {
+            tabBtns.forEach(({btn, tab}, j) => {
+              if (j === idx) {
+                btn.classList.add('text-blue-600', 'border-blue-600');
+                btn.classList.remove('text-gray-500', 'border-transparent');
+                tab.classList.remove('hidden');
+              } else {
+                btn.classList.remove('text-blue-600', 'border-blue-600');
+                btn.classList.add('text-gray-500', 'border-transparent');
+                tab.classList.add('hidden');
+              }
+            });
+          });
+        });
+
+        // --- Scan integration ---
+        const scanBtn = document.getElementById('scan-btn');
+        const websiteAddress = "{{ website.address }}";
+        const websiteName = "{{ website.name }}";
+        const websiteId = "{{ website.id }}";
+
+        scanBtn.addEventListener('click', async function() {
+          scanBtn.disabled = true;
+          scanBtn.textContent = 'Scanning...';
+          
+          // Show scanning message in all tabs
+          showScanningInAllTabs();
+          
+          try {
+            // 1. Gửi request scan với website_id
+            const resp = await fetch('/api/scan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                target: websiteAddress,
+                website_id: parseInt(websiteId)
+              })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.scan_id) {
+              alert(data.error || 'Failed to start scan');
+              scanBtn.disabled = false;
+              scanBtn.textContent = 'Scan';
+              return;
+            }
+            const scanId = data.scan_id;
+            // 2. Poll trạng thái scan
+            await pollScanStatus(scanId);
+          } catch (e) {
+            alert('Scan failed: ' + e.message);
+            scanBtn.disabled = false;
+            scanBtn.textContent = 'Scan';
+          }
+        });
+        
+        // Function to show scanning message in all tabs
+        function showScanningInAllTabs() {
+          // Show scanning message in summary tab
+          const summaryCard = document.querySelector('#tab-summary .bg-white.rounded-lg.shadow.p-6');
+          if (summaryCard) {
+            summaryCard.innerHTML = `
+              <h2 class="text-lg font-bold mb-4">Identification</h2>
+              <div class="space-y-2 text-sm text-gray-700">
+                <div><span class="font-semibold">ID:</span> ${websiteId}</div>
+                <div><span class="font-semibold">Name:</span> ${websiteName}</div>
+                <div><span class="font-semibold">FQDN:</span> ${websiteAddress}</div>
+                <div><span class="font-semibold">IP Address:</span> <span class="text-blue-600 font-semibold">Resolving...</span></div>
+                <div><span class="font-semibold">Reverse DNS:</span> <span class="text-blue-600 font-semibold">Resolving...</span></div>
+                <div><span class="font-semibold">Hostname:</span> <span class="text-blue-600 font-semibold">Resolving...</span></div>
+              </div>
+            `;
+          }
+          
+          // Show scanning message in subdomains tab
+          const subdomainTab = document.getElementById('tab-subdomains');
+          if (subdomainTab) {
+            const container = subdomainTab.querySelector('.flex.flex-col.items-center.justify-center.py-24');
+            if (container) {
+              container.innerHTML = `
+                <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">
+                  <rect x="8" y="24" width="80" height="56" rx="8" fill="#F3F4F6"/>
+                  <rect x="8" y="24" width="80" height="12" fill="#E5E7EB"/>
+                  <circle cx="20" cy="30" r="2" fill="#D1D5DB"/>
+                  <circle cx="28" cy="30" r="2" fill="#D1D5DB"/>
+                  <circle cx="36" cy="30" r="2" fill="#D1D5DB"/>
+                  <rect x="40" y="56" width="16" height="2" rx="1" fill="#D1D5DB"/>
+                  <circle cx="48" cy="48" r="4" fill="#D1D5DB"/>
+                </svg>
+                <div class="text-blue-600 text-lg mb-4">Scanning in progress...</div>
+                <div class="text-gray-400 text-sm">Please wait while we scan for subdomains</div>
+              `;
+            }
+          }
+          
+          // Show scanning message in ports tab
+          const portsTab = document.getElementById('tab-ports');
+          if (portsTab) {
+            const tbody = portsTab.querySelector('tbody');
+            if (tbody) {
+              tbody.innerHTML = `
+                <tr><td colspan="5" class="py-16">
+                  <div class="flex flex-col items-center justify-center">
+                    <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">
+                      <rect x="8" y="24" width="80" height="56" rx="8" fill="#F3F4F6"/>
+                      <rect x="8" y="24" width="80" height="12" fill="#E5E7EB"/>
+                      <circle cx="20" cy="30" r="2" fill="#D1D5DB"/>
+                      <circle cx="28" cy="30" r="2" fill="#D1D5DB"/>
+                      <circle cx="36" cy="30" r="2" fill="#D1D5DB"/>
+                      <rect x="40" y="56" width="16" height="2" rx="1" fill="#D1D5DB"/>
+                      <circle cx="48" cy="48" r="4" fill="#D1D5DB"/>
+                    </svg>
+                    <div class="text-blue-600 text-lg mb-4">Scanning in progress...</div>
+                    <div class="text-gray-400 text-sm">Please wait while we scan for open ports</div>
+                  </div>
+                </td></tr>
+              `;
+            }
+          }
+          
+          // Show scanning message in vulnerabilities tab
+          const vulnsTab = document.getElementById('tab-vulns');
+          if (vulnsTab) {
+            const container = vulnsTab.querySelector('.flex.flex-col.items-center.justify-center.py-24');
+            if (container) {
+              container.innerHTML = `
+                <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">
+                  <rect x="8" y="24" width="80" height="56" rx="8" fill="#F3F4F6"/>
+                  <rect x="8" y="24" width="80" height="12" fill="#E5E7EB"/>
+                  <circle cx="20" cy="30" r="2" fill="#D1D5DB"/>
+                  <circle cx="28" cy="30" r="2" fill="#D1D5DB"/>
+                  <circle cx="36" cy="30" r="2" fill="#D1D5DB"/>
+                  <rect x="40" y="56" width="16" height="2" rx="1" fill="#D1D5DB"/>
+                  <circle cx="48" cy="48" r="4" fill="#D1D5DB"/>
+                </svg>
+                <div class="text-blue-600 text-lg mb-4">Scanning in progress...</div>
+                <div class="text-gray-400 text-sm">Please wait while we scan for vulnerabilities</div>
+              `;
+            }
+          }
+        }
+
+        // Load kết quả scan cũ nếu có
+        async function loadLatestScan() {
+          try {
+            console.log('Loading latest scan for website:', websiteId);
+            const resp = await fetch(`/api/websites/${websiteId}/latest-scan`);
+            if (resp.ok) {
+              const data = await resp.json();
+              console.log('Latest scan data:', data);
+              
+              // Combine scan_info and results for rendering
+              const combinedResult = {
+                ...data.results,
+                scan_info: data.scan_info
+              };
+              
+              renderAllTabs(combinedResult);
+              scanBtn.disabled = false;
+              scanBtn.textContent = 'Scan Again';
+            } else {
+              console.log('No previous scan found, status:', resp.status);
+              // No previous scan found, enable scan button
+              scanBtn.disabled = false;
+              scanBtn.textContent = 'Scan';
+            }
+          } catch (e) {
+            console.log('Error loading latest scan:', e);
+            // No previous scan found, enable scan button
+            scanBtn.disabled = false;
+            scanBtn.textContent = 'Scan';
+          }
+        }
+
+        // Check if there's an active scan for this website
+        async function checkActiveScan() {
+          try {
+            console.log('Checking for active scans for website:', websiteId);
+            // Get recent scans for this website
+            const resp = await fetch(`/api/websites/${websiteId}/scans`);
+            if (resp.ok) {
+              const data = await resp.json();
+              const recentScans = data.scans || [];
+              console.log('Recent scans:', recentScans);
+              
+              // Check if there's a running scan
+              const runningScan = recentScans.find(scan => scan.status === 'running');
+              if (runningScan) {
+                console.log('Found running scan:', runningScan.scan_id);
+                scanBtn.disabled = true;
+                scanBtn.textContent = 'Scanning...';
+                
+                // Show scanning message in all tabs
+                showScanningInAllTabs();
+                
+                // Start polling for this scan
+                await pollScanStatus(runningScan.scan_id);
+                return;
+              } else {
+                console.log('No running scan found');
+              }
+            } else {
+              console.log('Failed to get scans, status:', resp.status);
+            }
+          } catch (e) {
+            console.log('Error checking active scan:', e);
+          }
+          
+          // If no active scan found, load latest results
+          console.log('Loading latest scan results');
+          loadLatestScan();
+        }
+
+        // Check for active scan when page loads
+        checkActiveScan();
+
+        // --- Render functions ---
+        function renderSummary(result) {
+          console.log('Rendering summary with result:', result);
+          console.log('Host info:', result.host_info);
+          // Card Identification: ID, Name, FQDN, IP, OS, ...
+          const card = document.querySelector('#tab-summary .bg-white.rounded-lg.shadow.p-6');
+          if (!card) return;
+          const hostInfo = result.host_info || {};
+          console.log('HostInfo object:', hostInfo);
+          console.log('Primary hostname:', hostInfo.primary_hostname);
+          console.log('All hostnames:', hostInfo.hostnames);
+          
+          const primaryIP = hostInfo.primary_ip || (hostInfo.ips && hostInfo.ips[0]) || '';
+          
+          // Logic để hiển thị hostname khác với FQDN
+          let hostname = 'N/A';
+          if (hostInfo.hostnames && hostInfo.hostnames.length > 0) {
+            // Tìm hostname khác với target/FQDN
+            const target = result.target || '';
+            const differentHostname = hostInfo.hostnames.find(h => h !== target);
+            hostname = differentHostname || hostInfo.hostnames[0];
+          } else if (hostInfo.primary_hostname) {
+            // Nếu primary_hostname khác với target, sử dụng nó
+            const target = result.target || '';
+            hostname = hostInfo.primary_hostname !== target ? hostInfo.primary_hostname : 'N/A';
+          }
+          
+          // Hiển thị thông tin reverse DNS nếu có
+          const reverseDNS = hostInfo.reverse_dns && hostInfo.reverse_dns.length > 0 ? hostInfo.reverse_dns.join(', ') : 'N/A';
+          
+          console.log('Final hostname value:', hostname);
+          card.innerHTML = `
+            <h2 class="text-lg font-bold mb-4">Identification</h2>
+            <div class="space-y-2 text-sm text-gray-700">
+              <div><span class="font-semibold">ID:</span> ${websiteId}</div>
+              <div><span class="font-semibold">Name:</span> ${websiteName}</div>
+              <div><span class="font-semibold">FQDN:</span> ${result.target || ''}</div>
+              <div><span class="font-semibold">IP Address:</span> ${primaryIP || 'N/A'}</div>
+              <div><span class="font-semibold">Reverse DNS:</span> ${reverseDNS}</div>
+              <div><span class="font-semibold">Hostname:</span> ${hostname}</div>
+            </div>
+          `;
+        }
+        let currentPage = 1;
+        const pageSize = 100;
+        let allSubdomains = [];
+        const subdomainReconCache = {};
+
+        function renderSubdomainTablePaginated(subdomains, page = 1) {
+          allSubdomains = subdomains;
+          currentPage = page;
+          const start = (page - 1) * pageSize;
+          const end = start + pageSize;
+          const pageSubs = subdomains.slice(start, end);
+          renderSubdomainTable(pageSubs);
+          renderPaginationControls(subdomains.length, page);
+        }
+
+        function renderPaginationControls(total, page) {
+          const totalPages = Math.ceil(total / pageSize);
+          let container = document.getElementById('pagination-controls');
+          if (!container) {
+            container = document.createElement('div');
+            container.id = 'pagination-controls';
+            container.className = 'mt-4 flex justify-center';
+            const tab = document.getElementById('tab-subdomains');
+            tab.appendChild(container);
+          }
+          let html = '';
+          if (page > 1) html += `<button onclick="gotoPage(${page-1})" class="px-3 py-1 mx-1 bg-gray-200 rounded hover:bg-gray-300">Prev</button>`;
+          html += ` <span class="px-2">Page ${page} / ${totalPages}</span> `;
+          if (page < totalPages) html += `<button onclick="gotoPage(${page+1})" class="px-3 py-1 mx-1 bg-gray-200 rounded hover:bg-gray-300">Next</button>`;
+          container.innerHTML = html;
+        }
+
+        function gotoPage(page) {
+          renderSubdomainTablePaginated(allSubdomains, page);
+        }
+
+        // Sửa renderSubdomains để dùng phân trang
+        function renderSubdomains(result) {
+          const tab = document.getElementById('tab-subdomains');
+          const container = tab.querySelector('.flex.flex-col.items-center.justify-center.py-24');
+          const subdomains = result.subdomains || result.all_subdomains || [];
+          window._allSubdomains = subdomains;
+          updateSubdomainStatistics(subdomains);
+          renderSubdomainTablePaginated(subdomains, 1);
+          attachSubdomainFilterEvents();
+        }
+
+        // Hàm chuyển string Python dict sang object JS
+        function parsePythonDictString(str) {
+          return JSON.parse(
+            str
+              .replace(/'/g, '"')
+              .replace(/\bNone\b/g, 'null')
+              .replace(/\bTrue\b/g, 'true')
+              .replace(/\bFalse\b/g, 'false')
+          );
+        }
+
+        function extractDomain(domain) {
+          if (typeof domain === 'string') {
+            const match = domain.match(/['"]domain['"]\s*:\s*['"]([^'"]+)['"]/);
+            if (match) return match[1];
+            return domain;
+          }
+          return domain;
+        }
+
+        function renderSubdomainTable(subdomains) {
+          const tab = document.getElementById('tab-subdomains');
+          const container = tab.querySelector('.flex.flex-col.items-center.justify-center.py-24');
+          if (!subdomains.length) {
+            container.innerHTML = `
+              <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">...</svg>
+              <div class="text-gray-400 text-lg mb-4">There aren't any results for that query.</div>
+              <button id="scan-btn-empty" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded font-semibold shadow">Scan Now</button>
+            `;
+            updateSubdomainStatistics(window._allSubdomains || []);
+            // Gắn event click cho scan button
+            const scanBtn = container.querySelector('#scan-btn-empty');
+            if (scanBtn) {
+              scanBtn.onclick = function() {
+                const mainScanBtn = document.querySelector('#scan-btn');
+                if (mainScanBtn) {
+                  mainScanBtn.click();
+                }
+              };
+            }
+            return;
+          }
+          container.innerHTML = `
+            <div class="w-full overflow-x-auto">
+              <table class="min-w-full bg-white rounded shadow">
+                <thead><tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subdomain</th>
+                  <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                </tr></thead>
+                <tbody>
+                  ${subdomains.map((sd, idx) => {
+                    let domain = sd.subdomain || sd.domain || '';
+                    domain = extractDomain(domain);
+                    return `
+                      <tr class="cursor-pointer hover:bg-blue-50" data-idx="${idx}">
+                        <td class="px-6 py-2 border-b text-blue-700 underline">${domain}</td>
+                        <td class="px-6 py-2 border-b text-center">
+                          <a href="http://${domain}" target="_blank" rel="noopener" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-semibold text-xs">Visit</a>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+            <div id="subdomain-detail-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-40"></div>
+          `;
+          updateSubdomainStatistics(subdomains);
+          // Gắn event click cho từng dòng subdomain
+          const rows = container.querySelectorAll('tbody tr');
+          rows.forEach(row => {
+            row.onclick = function(e) {
+              // Nếu click vào nút Visit thì không chuyển trang
+              if (e.target.tagName === 'A') return;
+              const idx = parseInt(row.getAttribute('data-idx'));
+              const sd = subdomains[idx];
+              let domain = sd.subdomain || sd.domain || '';
+              domain = extractDomain(domain);
+              // Chuyển hướng sang trang chi tiết subdomain
+              window.location.href = `/subdomain/${domain}`;
+            };
+          });
+        }
+
+        // Sửa showSubdomainReconModal để dùng cache
+        function showSubdomainReconModal(subdomain) {
+          let modal = document.getElementById('subdomain-detail-modal');
+          if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'subdomain-detail-modal';
+            modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40';
+            document.body.appendChild(modal);
+          }
+          modal.classList.remove('hidden');
+          // Nếu đã có cache, hiển thị luôn
+          if (subdomainReconCache[subdomain]) {
+            renderReconResultInModal(subdomainReconCache[subdomain], modal);
+            return;
+          }
+          // Hiệu ứng loading
+          modal.innerHTML = `
+            <div class="bg-white rounded-lg shadow-lg p-8 w-full max-w-lg relative flex flex-col items-center">
+              <button id="close-subdomain-modal" class="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
+              <div class="flex flex-col items-center justify-center py-8">
+                <svg class="animate-spin h-10 w-10 text-blue-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
+                <div class="text-blue-600 text-lg mb-2">Recon subdomain: <span class="font-bold">${subdomain}</span></div>
+                <div class="text-gray-400 text-sm">Please wait while we gather information...</div>
+              </div>
+            </div>
+          `;
+          // Đóng modal
+          modal.querySelector('#close-subdomain-modal').onclick = () => {
+            modal.classList.add('hidden');
+          };
+          // Gọi API enrich
+          fetch('/api/recon_subdomain', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subdomain })
+          })
+          .then(res => res.json())
+          .then(data => {
+            subdomainReconCache[subdomain] = data;
+            renderReconResultInModal(data, modal);
+          })
+          .catch(err => {
+            modal.innerHTML = `
+              <div class="bg-white rounded-lg shadow-lg p-8 w-full max-w-lg relative flex flex-col items-center">
+                <button id="close-subdomain-modal" class="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
+                <div class="text-red-600 text-lg mb-2">Recon failed</div>
+                <div class="text-gray-400 text-sm mb-4">${err.message || err}</div>
+              </div>
+            `;
+            modal.querySelector('#close-subdomain-modal').onclick = () => {
+              modal.classList.add('hidden');
+            };
+            modal.onclick = (e) => {
+              if (e.target === modal) modal.classList.add('hidden');
+            };
+          });
+        }
+
+        function renderReconResultInModal(data, modal) {
+          const objFiltered = removeNullFields(data);
+          modal.innerHTML = `
+            <div class="bg-white rounded-lg shadow-lg p-8 w-full max-w-lg relative">
+              <button id="close-subdomain-modal" class="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
+              <h3 class="text-xl font-bold mb-4">Subdomain Recon Result</h3>
+              <pre class="bg-gray-100 rounded p-2 text-xs whitespace-pre-wrap max-h-96 overflow-y-auto">${JSON.stringify(objFiltered, null, 2)}</pre>
+              <div class="flex space-x-4 mt-6">
+                <button id="copy-subdomain-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded font-semibold">Copy JSON</button>
+              </div>
+            </div>
+          `;
+          modal.querySelector('#close-subdomain-modal').onclick = () => {
+            modal.classList.add('hidden');
+          };
+          modal.querySelector('#copy-subdomain-btn').onclick = () => {
+            navigator.clipboard.writeText(JSON.stringify(objFiltered, null, 2));
+          };
+          modal.onclick = (e) => {
+            if (e.target === modal) modal.classList.add('hidden');
+          };
+        }
+
+        function removeNullFields(obj) {
+          if (Array.isArray(obj)) {
+            return obj.map(removeNullFields);
+          } else if (obj && typeof obj === 'object') {
+            const newObj = {};
+            for (const key in obj) {
+              if (obj[key] !== null && obj[key] !== undefined) {
+                newObj[key] = removeNullFields(obj[key]);
+              }
+            }
+            return newObj;
+          }
+          return obj;
+        }
+
+        function showSubdomainDetailModal(sd) {
+          let modal = document.getElementById('subdomain-detail-modal');
+          if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'subdomain-detail-modal';
+            modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40';
+            document.body.appendChild(modal);
+          }
+          modal.classList.remove('hidden');
+          // Lấy object gốc
+          let obj = sd;
+          if (typeof sd === 'string') {
+            try {
+              obj = JSON.parse(sd);
+            } catch {
+              try {
+                obj = parsePythonDictString(sd);
+              } catch {
+                obj = { subdomain: sd };
+              }
+            }
+          }
+          const objFiltered = removeNullFields(obj);
+          modal.innerHTML = `
+            <div class="bg-white rounded-lg shadow-lg p-8 w-full max-w-lg relative">
+              <button id="close-subdomain-modal" class="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
+              <h3 class="text-xl font-bold mb-4">Subdomain Detail (JSON)</h3>
+              <pre class="bg-gray-100 rounded p-2 text-xs whitespace-pre-wrap">${JSON.stringify(objFiltered, null, 2)}</pre>
+              <div class="flex space-x-4 mt-6">
+                <button id="copy-subdomain-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded font-semibold">Copy JSON</button>
+              </div>
+            </div>
+          `;
+          // Đóng modal
+          modal.querySelector('#close-subdomain-modal').onclick = () => {
+            modal.classList.add('hidden');
+          };
+          // Copy JSON đã lọc
+          modal.querySelector('#copy-subdomain-btn').onclick = () => {
+            navigator.clipboard.writeText(JSON.stringify(objFiltered, null, 2));
+          };
+          // Đóng khi click nền đen
+          modal.onclick = (e) => {
+            if (e.target === modal) modal.classList.add('hidden');
+          };
+        }
+
+        function attachSubdomainFilterEvents() {
+          // Search logic
+          const searchInput = document.getElementById('subdomain-search');
+          if (searchInput) {
+            searchInput.oninput = filterAndRenderSubdomains;
+          }
+        }
+        
+
+
+        function updateSubdomainStatistics(subdomains) {
+          // Always show total from all subdomains, not filtered ones
+          const totalAll = window._allSubdomains ? window._allSubdomains.length : 0;
+          document.getElementById('total-subdomains').textContent = totalAll;
+          
+          console.log(`Subdomain stats - Total: ${totalAll}`);
+        }
+
+        function updateScanTimeInfo(scanInfo) {
+          if (!scanInfo) {
+            document.getElementById('start-time').textContent = 'N/A';
+            document.getElementById('finish-time').textContent = 'N/A';
+            document.getElementById('scan-duration').textContent = 'N/A';
+            return;
+          }
+
+          // Format start time
+          let startTime = 'N/A';
+          if (scanInfo.start_time) {
+            try {
+              const startDate = new Date(scanInfo.start_time);
+              startTime = startDate.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+            } catch (e) {
+              startTime = scanInfo.start_time;
+            }
+          }
+
+          // Format finish time
+          let finishTime = 'N/A';
+          if (scanInfo.end_time) {
+            try {
+              const endDate = new Date(scanInfo.end_time);
+              finishTime = endDate.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+            } catch (e) {
+              finishTime = scanInfo.end_time;
+            }
+          }
+
+          // Calculate duration
+          let duration = 'N/A';
+          if (scanInfo.duration) {
+            const seconds = Math.round(scanInfo.duration);
+            if (seconds < 60) {
+              duration = `${seconds} seconds`;
+            } else if (seconds < 3600) {
+              const minutes = Math.floor(seconds / 60);
+              const remainingSeconds = seconds % 60;
+              duration = `${minutes}m ${remainingSeconds}s`;
+            } else {
+              const hours = Math.floor(seconds / 3600);
+              const minutes = Math.floor((seconds % 3600) / 60);
+              duration = `${hours}h ${minutes}m`;
+            }
+          } else if (scanInfo.start_time && scanInfo.end_time) {
+            try {
+              const start = new Date(scanInfo.start_time);
+              const end = new Date(scanInfo.end_time);
+              const diffMs = end - start;
+              const diffSeconds = Math.round(diffMs / 1000);
+              
+              if (diffSeconds < 60) {
+                duration = `${diffSeconds} seconds`;
+              } else if (diffSeconds < 3600) {
+                const minutes = Math.floor(diffSeconds / 60);
+                const remainingSeconds = diffSeconds % 60;
+                duration = `${minutes}m ${remainingSeconds}s`;
+              } else {
+                const hours = Math.floor(diffSeconds / 3600);
+                const minutes = Math.floor((diffSeconds % 3600) / 60);
+                duration = `${hours}h ${minutes}m`;
+              }
+            } catch (e) {
+              duration = 'N/A';
+            }
+          }
+
+          document.getElementById('start-time').textContent = startTime;
+          document.getElementById('finish-time').textContent = finishTime;
+          document.getElementById('scan-duration').textContent = duration;
+        }
+
+        function filterAndRenderSubdomains() {
+          const searchInput = document.getElementById('subdomain-search');
+          let subdomains = window._allSubdomains || [];
+          const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
+          
+          // Apply search filter only
+          if (search) {
+            subdomains = subdomains.filter(sd => {
+              const d = typeof sd === 'string' ? sd : (sd.subdomain || sd.domain || '');
+              return d.toLowerCase().includes(search);
+            });
+          }
+          
+          console.log(`Search: "${search}", Total: ${window._allSubdomains?.length || 0}, Filtered: ${subdomains.length}`);
+          renderSubdomainTablePaginated(subdomains, 1); // Render first page of filtered results
+        }
+        let allPortServices = [];
+        let lastPortSearch = '';
+
+        function renderPorts(result) {
+          console.log('Rendering ports with result:', result);
+          console.log('Services array:', result.services);
+          // Tab ports: table
+          const tab = document.getElementById('tab-ports');
+          if (!tab) {
+            console.error('Tab ports not found');
+            return;
+          }
+          const tbody = tab.querySelector('tbody');
+          if (!tbody) {
+            console.error('Tbody not found in ports tab');
+            return;
+          }
+          const services = result.services || [];
+          allPortServices = services; // Lưu lại toàn bộ services để filter
+          console.log('Services to render:', services);
+          if (!services.length) {
+            console.log('No services found, showing empty state');
+            tbody.innerHTML = `<tr><td colspan="5" class="py-16"><div class="flex flex-col items-center justify-center"><svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">...</svg><div class="text-gray-400 text-lg mb-4">There aren't any results for that query.</div><button class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded font-semibold shadow">Scan Now</button></div></td></tr>`;
+            updatePortFilters([], []);
+            return;
+          }
+          console.log(`Rendering ${services.length} services`);
+          renderPortTable(services);
+          // Cập nhật dropdown filter
+          const ipSet = Array.from(new Set(services.map(s => s.ip_address).filter(Boolean)));
+          const serviceSet = Array.from(new Set(services.map(s => s.service_name || 'Unknown').filter(Boolean)));
+          updatePortFilters(ipSet, serviceSet);
+          console.log('Services rendered successfully');
+          // Gắn event filter
+          attachPortFilterEvents();
+          attachPortSearchEvent();
+        }
+
+        function renderPortTable(services) {
+          const tab = document.getElementById('tab-ports');
+          const tbody = tab.querySelector('tbody');
+          tbody.innerHTML = services.map((s, idx) => {
+            return `
+              <tr class="cursor-pointer hover:bg-blue-50" data-idx="${idx}">
+                <td class="px-6 py-2 border-b">${s.ip_address || ''}</td>
+                <td class="px-6 py-2 border-b">${s.port || ''}</td>
+                <td class="px-6 py-2 border-b">${s.protocol || ''}</td>
+                <td class="px-6 py-2 border-b">${s.version || ''}</td>
+                <td class="px-6 py-2 border-b">${s.service_name || 'Unknown'}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+
+        function updatePortFilters(ipList, serviceList) {
+          const ipSelect = document.querySelector('#tab-ports select[data-filter="ip"]');
+          if (ipSelect) {
+            ipSelect.innerHTML = '<option>All</option>' + ipList.map(ip => `<option>${ip}</option>`).join('');
+          }
+          const serviceSelect = document.querySelector('#tab-ports select[data-filter="service"]');
+          if (serviceSelect) {
+            serviceSelect.innerHTML = '<option>All</option>' + serviceList.map(sv => `<option>${sv}</option>`).join('');
+          }
+        }
+
+        function attachPortFilterEvents() {
+          const ipSelect = document.querySelector('#tab-ports select[data-filter="ip"]');
+          const serviceSelect = document.querySelector('#tab-ports select[data-filter="service"]');
+          if (ipSelect) {
+            ipSelect.onchange = filterPortTable;
+          }
+          if (serviceSelect) {
+            serviceSelect.onchange = filterPortTable;
+          }
+        }
+
+        function attachPortSearchEvent() {
+          const searchInput = document.querySelector('#tab-ports input[data-filter="search"]');
+          if (searchInput) {
+            searchInput.oninput = filterPortTable;
+          }
+        }
+
+        function filterPortTable() {
+          const ipSelect = document.querySelector('#tab-ports select[data-filter="ip"]');
+          const serviceSelect = document.querySelector('#tab-ports select[data-filter="service"]');
+          const searchInput = document.querySelector('#tab-ports input[data-filter="search"]');
+          const ipVal = ipSelect ? ipSelect.value : 'All';
+          const serviceVal = serviceSelect ? serviceSelect.value : 'All';
+          const searchVal = searchInput ? searchInput.value.trim().toLowerCase() : '';
+          let filtered = allPortServices;
+          if (ipVal && ipVal !== 'All') {
+            filtered = filtered.filter(s => s.ip_address === ipVal);
+          }
+          if (serviceVal && serviceVal !== 'All') {
+            filtered = filtered.filter(s => (s.service_name || 'Unknown') === serviceVal);
+          }
+          if (searchVal) {
+            filtered = filtered.filter(s => {
+              return (
+                (s.ip_address && s.ip_address.toLowerCase().includes(searchVal)) ||
+                (s.port && String(s.port).includes(searchVal)) ||
+                (s.protocol && s.protocol.toLowerCase().includes(searchVal)) ||
+                (s.version && s.version.toLowerCase().includes(searchVal)) ||
+                (s.service_name && s.service_name.toLowerCase().includes(searchVal))
+              );
+            });
+          }
+          renderPortTable(filtered);
+        }
+
+        // Modal chi tiết service/port
+        function showServiceDetail(service) {
+          let modal = document.getElementById('service-detail-modal');
+          if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'service-detail-modal';
+            modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40';
+            modal.innerHTML = `
+              <div class="bg-white rounded-lg shadow-lg p-8 w-full max-w-md relative">
+                <button id="close-service-modal" class="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
+                <h3 class="text-xl font-bold mb-4">Service/Port Detail</h3>
+                <div id="service-detail-content"></div>
+              </div>
+            `;
+            document.body.appendChild(modal);
+          } else {
+            modal.style.display = 'flex';
+          }
+          // Render nội dung chi tiết
+          const content = modal.querySelector('#service-detail-content');
+          content.innerHTML = `
+            <div class="space-y-2 text-sm">
+              <div><span class="font-semibold">IP Address:</span> ${service.ip_address || ''}</div>
+              <div><span class="font-semibold">Port:</span> ${service.port || ''}</div>
+              <div><span class="font-semibold">Protocol:</span> ${service.protocol || ''}</div>
+              <div><span class="font-semibold">Service:</span> ${service.service || ''}</div>
+              ${service.banner ? `<div><span class="font-semibold">Banner:</span> <pre class="bg-gray-100 rounded p-2 text-xs whitespace-pre-wrap">${service.banner}</pre></div>` : ''}
+              ${service.product ? `<div><span class="font-semibold">Product:</span> ${service.product}</div>` : ''}
+              ${service.version ? `<div><span class="font-semibold">Version:</span> ${service.version}</div>` : ''}
+              ${service.extra_info ? `<div><span class="font-semibold">Extra Info:</span> ${service.extra_info}</div>` : ''}
+            </div>
+          `;
+          // Đóng modal
+          modal.querySelector('#close-service-modal').onclick = () => {
+            modal.style.display = 'none';
+          };
+          // Đóng khi click nền đen
+          modal.onclick = (e) => {
+            if (e.target === modal) modal.style.display = 'none';
+          };
+        }
+
+        // --- Render all tabs ---
+        function renderAllTabs(result) {
+          console.log('Rendering all tabs with result:', result);
+          
+          // Extract scan_info if it exists in the response
+          let scanInfo = null;
+          if (result.scan_info) {
+            scanInfo = result.scan_info;
+          } else if (result.results && result.results.scan_info) {
+            scanInfo = result.results.scan_info;
+          }
+          
+          // Update scan time information
+          updateScanTimeInfo(scanInfo);
+          
+          renderSummary(result);
+          renderSubdomains(result);
+          renderPorts(result);
+          // Reset scan button
+          const scanBtn = document.querySelector('#scan-btn');
+          if (scanBtn) {
+            scanBtn.disabled = false;
+            scanBtn.textContent = 'Scan Again';
+          }
+        }
+
+        // --- Fetch scan results ---
+        async function fetchScanResults(scanId) {
+          console.log('Fetching scan results for scan ID:', scanId);
+          try {
+            const response = await fetch(`/api/scan/${scanId}/results`);
+            console.log('API response status:', response.status);
+            if (!response.ok) {
+              console.error('API response not ok:', response.status, response.statusText);
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const result = await response.json();
+            console.log('API response data:', result);
+            return result;
+          } catch (error) {
+            console.error('Error fetching scan results:', error);
+            throw error;
+          }
+        }
+
+        // --- Poll scan status ---
+        async function pollScanStatus(scanId) {
+          console.log('Starting to poll scan status for scan ID:', scanId);
+          const maxAttempts = 60; // 5 minutes max
+          let attempts = 0;
+          
+          const poll = async () => {
+            console.log(`Poll attempt ${attempts + 1}/${maxAttempts}`);
+            try {
+              const response = await fetch(`/api/scan/${scanId}/status`);
+              console.log('Status API response status:', response.status);
+              if (!response.ok) {
+                console.error('Status API response not ok:', response.status, response.statusText);
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              const status = await response.json();
+              console.log('Status API response data:', status);
+              
+              if (status.status === 'completed') {
+                console.log('Scan completed, fetching results...');
+                const results = await fetchScanResults(scanId);
+                console.log('Results fetched, rendering...');
+                renderAllTabs(results);
+                console.log('All tabs rendered');
+                
+                // Re-enable scan button
+                scanBtn.disabled = false;
+                scanBtn.textContent = 'Scan Again';
+                return;
+              } else if (status.status === 'failed') {
+                console.error('Scan failed:', status.error);
+                alert('Scan failed: ' + (status.error || 'Unknown error'));
+                
+                // Re-enable scan button
+                scanBtn.disabled = false;
+                scanBtn.textContent = 'Scan Again';
+                return;
+              } else if (status.status === 'running') {
+                // Update progress if available
+                if (status.progress !== undefined) {
+                  scanBtn.textContent = `Scanning... ${status.progress}%`;
+                }
+                if (status.message) {
+                  console.log('Scan progress:', status.message);
+                }
+              }
+              
+              attempts++;
+              if (attempts >= maxAttempts) {
+                console.error('Max polling attempts reached');
+                alert('Scan timeout. Please try again.');
+                
+                // Re-enable scan button
+                scanBtn.disabled = false;
+                scanBtn.textContent = 'Scan Again';
+                return;
+              }
+              
+              console.log('Scan still running, polling again in 5 seconds...');
+              setTimeout(poll, 5000);
+            } catch (error) {
+              console.error('Error polling scan status:', error);
+              alert('Error checking scan status: ' + error.message);
+              
+              // Re-enable scan button on error
+              scanBtn.disabled = false;
+              scanBtn.textContent = 'Scan Again';
+            }
+          };
+          
+          poll();
+        }
+      </script>
+    </main>
+  </div>
+</body>
+</html> 

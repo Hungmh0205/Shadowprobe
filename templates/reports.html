@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShadowProbe Web - Reports</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <aside class="fixed top-0 left-0 h-screen w-64 bg-gray-900 text-white flex flex-col z-40">
+    <div class="h-20 flex items-center justify-center border-b border-gray-800">
+      <span class="text-2xl font-bold tracking-wide">ShadowProbe</span>
+    </div>
+    <nav class="flex-1 py-6">
+      <ul class="space-y-1">
+        <li>
+          <a href="/dashboard" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-tachometer-alt mr-3"></i> Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="/" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-globe mr-3"></i> Websites
+          </a>
+        </li>
+        <li>
+          <a href="/scans" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-search mr-3"></i> Scans
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-bug mr-3"></i> Vulnerabilities
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-desktop mr-3"></i> Monitors
+          </a>
+        </li>
+        <li>
+          <a href="/reports" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-file-alt mr-3"></i> Reports
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </aside>
+  <!-- Main Content -->
+  <div class="ml-64 flex-1 flex flex-col">
+    <!-- Header -->
+    <header class="h-20 bg-white flex items-center justify-end px-8 border-b border-gray-200">
+
+    </header>
+    <!-- Content -->
+    <main class="flex-1 p-10 bg-gray-100">
+      <h1 class="text-3xl font-bold text-gray-900 mb-8">Reports</h1>
+      <!-- Filters -->
+      <div class="flex flex-wrap gap-4 mb-8">
+        <select class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[220px] bg-white">
+          <option>Website</option>
+          <option>--</option>
+        </select>
+        <select class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[220px] bg-white">
+          <option>Status</option>
+          <option>--</option>
+        </select>
+        <select class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[220px] bg-white">
+          <option>Report Type</option>
+          <option>--</option>
+        </select>
+        <div class="flex items-center border border-gray-300 rounded px-4 py-2 bg-white min-w-[476px]">
+          <i class="fas fa-calendar-alt text-gray-400 mr-2"></i>
+          <input id="reportDateRange" type="text" class="border-none focus:ring-0 text-gray-700 bg-transparent w-full text-center" placeholder="-" />
+        </div>
+      </div>
+      <!-- Empty State -->
+      <div class="bg-white rounded-lg shadow flex flex-col items-center justify-center py-24 mt-8">
+        <div class="mb-4">
+          <svg width="80" height="80" fill="none" viewBox="0 0 80 80">
+            <rect width="80" height="80" rx="16" fill="#F3F4F6"/>
+            <rect x="22" y="32" width="36" height="20" rx="4" fill="#E5E7EB"/>
+            <rect x="30" y="40" width="20" height="4" rx="2" fill="#D1D5DB"/>
+            <circle cx="40" cy="50" r="2" fill="#D1D5DB"/>
+          </svg>
+        </div>
+        <div class="text-gray-400 text-lg mb-4">There aren't any results for that query.</div>
+        <button id="scanNowBtnReports" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded font-semibold shadow">Scan Now</button>
+      </div>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', function() {
+      flatpickr("#reportDateRange", {
+        mode: "range",
+        dateFormat: "d/m/Y",
+        allowInput: true
+      });
+      // Scan Now button: chuyển sang scans page và mở modal scan
+      const scanNowBtnReports = document.getElementById('scanNowBtnReports');
+      if (scanNowBtnReports) {
+        scanNowBtnReports.addEventListener('click', function() {
+          window.location.href = '/scans?newscan=1';
+        });
+      }
+    });
+  </script>
+</body>
+</html> 

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reconnaissance Details - {{ subdomain }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen p-4 md:p-8">
+        <nav class="mb-6">
+            <div class="flex items-center gap-2 text-sm text-gray-600">
+                <a href="/" class="hover:underline">Home</a>
+                <span>/</span>
+                <a href="/website/{{ subdomain.split('.')[-2] }}" class="hover:underline">Back to Website</a>
+                <span>/</span>
+                <span class="font-semibold">{{ subdomain }}</span>
+            </div>
+        </nav>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <main class="lg:col-span-8 space-y-6">
+                <section class="bg-white rounded-xl p-6 shadow-sm">
+                    <h1 class="text-3xl font-bold text-gray-900">{{ subdomain }}</h1>
+                    <div class="mt-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ 'bg-green-100 text-green-800' if status=='active' else 'bg-gray-200 text-gray-500' }}">{{ status|capitalize }}</div>
+                </section>
+
+                <section class="bg-white rounded-xl p-6 shadow-sm">
+                    <h2 class="text-lg font-semibold mb-4">Geolocation Details</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="p-4 bg-gray-50 rounded-lg">
+                            <div class="text-sm text-gray-600">Country</div>
+                            <div class="font-medium">{{ geo.country }}</div>
+                        </div>
+                        <div class="p-4 bg-gray-50 rounded-lg">
+                            <div class="text-sm text-gray-600">City</div>
+                            <div class="font-medium">{{ geo.city }}</div>
+                        </div>
+                        <div class="p-4 bg-gray-50 rounded-lg">
+                            <div class="text-sm text-gray-600">ASN</div>
+                            <div class="font-medium">{{ geo.asn }}</div>
+                        </div>
+                        <div class="p-4 bg-gray-50 rounded-lg">
+                            <div class="text-sm text-gray-600">ISP</div>
+                            <div class="font-medium">{{ geo.isp }}</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="bg-white rounded-xl p-6 shadow-sm">
+                    <h2 class="text-lg font-semibold mb-4">Open Ports</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="text-left bg-gray-50">
+                                    <th class="p-3 text-sm font-medium text-gray-600">Port</th>
+                                    <th class="p-3 text-sm font-medium text-gray-600">Service</th>
+                                    <th class="p-3 text-sm font-medium text-gray-600">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                {% for port in ports %}
+                                <tr class="{% if loop.index0 % 2 == 1 %}bg-gray-50{% endif %}">
+                                    <td class="p-3">{{ port.port }}</td>
+                                    <td class="p-3">{{ port.service }}</td>
+                                    <td class="p-3"><span class="{{ 'text-green-600' if port.status=='open' else 'text-red-600' }}">{{ port.status|capitalize }}</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="bg-white rounded-xl p-6 shadow-sm">
+                    <h2 class="text-lg font-semibold mb-4">Technologies Detected</h2>
+                    <div class="flex flex-wrap gap-2">
+                        {% for tech in technologies %}
+                        <span class="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">{{ tech }}</span>
+                        {% endfor %}
+                    </div>
+                </section>
+
+                <section class="bg-white rounded-xl p-6 shadow-sm">
+                    <h2 class="text-lg font-semibold mb-4">Screenshot Preview</h2>
+                    <div class="aspect-video rounded-lg overflow-hidden bg-gray-100">
+                        <img src="{{ screenshot_url }}" alt="Website Screenshot" class="w-full h-full object-cover">
+                    </div>
+                </section>
+            </main>
+
+            <aside class="lg:col-span-4 space-y-6">
+                <section class="bg-white rounded-xl p-6 shadow-sm">
+                    <h2 class="text-lg font-semibold mb-4">Hash Information</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <div class="text-sm text-gray-600 mb-1">MD5</div>
+                            <code class="block p-2 bg-gray-50 rounded text-sm font-mono">{{ hash.md5 }}</code>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-600 mb-1">SHA-256</div>
+                            <code class="block p-2 bg-gray-50 rounded text-sm font-mono">{{ hash.sha256 }}</code>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="bg-white rounded-xl p-6 shadow-sm">
+                    <h2 class="text-lg font-semibold mb-4">WHOIS Details</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <div class="text-sm text-gray-600">Registrar</div>
+                            <div class="font-medium">{{ whois.registrar }}</div>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-600">Creation Date</div>
+                            <div class="font-medium">{{ whois.creation_date }}</div>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-600">Expiration Date</div>
+                            <div class="font-medium">{{ whois.expiration_date }}</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="bg-white rounded-xl p-6 shadow-sm">
+                    <h2 class="text-lg font-semibold mb-4">Reverse IP Domains</h2>
+                    <div class="space-y-2">
+                        {% for dom in reverse_ip_domains %}
+                        <a href="/subdomain/{{ dom }}" class="block p-2 hover:bg-gray-50 rounded">{{ dom }}</a>
+                        {% endfor %}
+                    </div>
+                </section>
+            </aside>
+        </div>
+    </div>
+</body>
+</html> 

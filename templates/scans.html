@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShadowProbe Web - Scans</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <style>
+    .multi-select {
+      position: relative;
+    }
+    .multi-select .selected-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 4px;
+    }
+    .multi-select .selected-option {
+      background: #3b82f6;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .multi-select .selected-option .remove {
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .multi-select .dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    }
+    .multi-select .dropdown.show {
+      display: block;
+    }
+    .multi-select .dropdown-option {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .multi-select .dropdown-option:hover {
+      background: #f3f4f6;
+    }
+    .multi-select .dropdown-option.selected {
+      background: #dbeafe;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <aside class="fixed top-0 left-0 h-screen w-64 bg-gray-900 text-white flex flex-col z-40">
+    <div class="h-20 flex items-center justify-center border-b border-gray-800">
+      <span class="text-2xl font-bold tracking-wide">ShadowProbe</span>
+    </div>
+    <nav class="flex-1 py-6">
+      <ul class="space-y-1">
+        <li>
+          <a href="/dashboard" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-tachometer-alt mr-3"></i> Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="/" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-globe mr-3"></i> Websites
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 bg-gray-700 rounded-r-full font-medium">
+            <i class="fas fa-search mr-3"></i> Scans
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-bug mr-3"></i> Vulnerabilities
+          </a>
+        </li>
+        <li>
+          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-desktop mr-3"></i> Monitors
+          </a>
+        </li>
+        <li>
+          <a href="/reports" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-file-alt mr-3"></i> Reports
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </aside>
+  <!-- Main Content -->
+  <div class="ml-64 flex-1 flex flex-col">
+      <!-- Header -->
+      <header class="h-20 bg-white flex items-center justify-end px-8 border-b border-gray-200">
+      </header>
+      <!-- Content -->
+      <main class="flex-1 p-10 bg-gray-100">
+        <div class="flex items-center justify-between mb-8">
+          <h1 class="text-3xl font-bold text-gray-900">Scans</h1>
+          <button id="openNewScan" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-semibold shadow">New scan</button>
+        </div>
+        <!-- Tabs -->
+        <div class="flex items-center space-x-8 mb-6 border-b border-gray-200">
+          <button id="tabScanHistory" class="pb-3 text-blue-600 font-semibold border-b-2 border-blue-600 focus:outline-none">Scan History</button>
+          <button id="tabSchedule" class="pb-3 text-gray-500 font-semibold border-b-2 border-transparent hover:text-blue-600 hover:border-blue-200 focus:outline-none">Schedule</button>
+        </div>
+        <!-- Filters & Scan History Content -->
+        <div id="scanHistoryContent">
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0 mb-6">
+              <!-- Website Multi-Select -->
+              <div class="multi-select flex-1">
+                <div class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus-within:ring-2 focus-within:ring-blue-500 cursor-pointer" id="websiteMultiSelect">
+                  <div class="selected-options" id="selectedWebsites">
+                    <span class="text-gray-400">All Websites</span>
+                  </div>
+                </div>
+                <div class="dropdown" id="websiteDropdown">
+                  <!-- Options will be populated by JavaScript -->
+                </div>
+              </div>
+              
+              <!-- Status Filter -->
+              <select id="statusFilter" class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[150px]">
+                <option value="">All Status</option>
+                <option value="completed">Completed</option>
+                <option value="running">Running</option>
+                <option value="failed">Failed</option>
+              </select>
+              
+              <!-- Type Filter -->
+              <select id="typeFilter" class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[150px]">
+                <option value="">All Types</option>
+                <option value="IP Address">IP Address</option>
+                <option value="Domain">Domain</option>
+              </select>
+              
+              <!-- Search Input -->
+              <input type="text" id="searchFilter" placeholder="Search" class="border border-gray-300 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 flex-1" />
+              
+              <!-- Date Range Filter -->
+              <div class="flex items-center border border-gray-300 rounded px-4 py-2 bg-white min-w-[200px]">
+                <i class="fas fa-calendar-alt text-gray-400 mr-2"></i>
+                <input id="scanDateRange" type="text" class="border-none focus:ring-0 text-gray-700 bg-transparent w-full text-center" placeholder="All dates" />
+              </div>
+              
+              <!-- Clear Filters Button -->
+              <button id="clearFiltersBtn" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded hover:bg-gray-50">
+                <i class="fas fa-times mr-1"></i>Clear
+              </button>
+            </div>
+            
+            <!-- Scan History Table -->
+            <div class="overflow-x-auto">
+              <table class="min-w-full border border-gray-200 rounded-lg">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Website</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Started</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="scanTableBody" class="bg-white divide-y divide-gray-200">
+                  <tr>
+                    <td colspan="7" class="text-center py-8 text-gray-400 text-lg">Loading scans...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <!-- Schedule Content -->
+        <div id="scheduleContent" class="hidden">
+          <div class="bg-white rounded-lg shadow flex flex-col items-center justify-center py-24 mt-8">
+            <div class="mb-4">
+              <svg width="80" height="80" fill="none" viewBox="0 0 80 80">
+                <rect width="80" height="80" rx="16" fill="#F3F4F6"/>
+                <rect x="22" y="32" width="36" height="20" rx="4" fill="#E5E7EB"/>
+                <rect x="30" y="40" width="20" height="4" rx="2" fill="#D1D5DB"/>
+                <circle cx="40" cy="50" r="2" fill="#D1D5DB"/>
+              </svg>
+            </div>
+            <div class="text-gray-400 text-lg mb-4">No scheduled scans yet.</div>
+          </div>
+        </div>
+      </main>
+    </div>
+  
+  <!-- Modal Scan Details -->
+  <div id="scanDetailsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 hidden">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-6xl mx-auto p-8 relative animate-fadeIn max-h-[90vh] overflow-y-auto">
+      <button id="closeScanDetails" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl focus:outline-none">&times;</button>
+      <div id="scanDetailsContent">
+        <div class="text-center py-8">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p class="mt-4 text-gray-600">Loading scan details...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal New Scan -->
+  <div id="newScanModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 hidden">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto p-12 relative animate-fadeIn">
+      <button id="closeNewScan" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl focus:outline-none">&times;</button>
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">New scan</h2>
+      <form>
+        <div class="mb-4 flex items-center">
+          <label class="w-40 text-gray-700 font-medium">Website</label>
+          <select id="modalWebsiteSelect" class="flex-1 border border-gray-300 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500">
+            <option value="">Select a website to scan</option>
+          </select>
+        </div>
+        
+        <div class="mb-4 flex items-center">
+          <label class="w-40 text-gray-700 font-medium">Schedule</label>
+          <label class="inline-flex relative items-center cursor-pointer">
+            <input id="toggleSchedule" type="checkbox" class="sr-only peer">
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:bg-blue-500 transition-all"></div>
+            <div class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full shadow peer-checked:translate-x-5 transition-all"></div>
+          </label>
+        </div>
+        <div id="scheduleFields" class="space-y-4 mb-4 hidden">
+          <div class="flex items-center">
+            <label class="w-40 text-gray-700 font-medium">Frequency</label>
+            <select class="flex-1 border border-gray-300 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500">
+              <option>Once</option>
+              <option>Daily</option>
+              <option>Weekly</option>
+              <option>Monthly</option>
+            </select>
+          </div>
+          <div class="flex items-center">
+            <label class="w-40 text-gray-700 font-medium">Start Time</label>
+            <input id="startTimeInput" type="text" class="flex-1 border border-gray-300 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500 bg-gray-100" placeholder="Select date & time" />
+          </div>
+          <div class="flex items-center">
+            <label class="w-40 text-gray-700 font-medium">Timezone</label>
+            <select class="flex-1 border border-gray-300 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500">
+              <option value="UTC">UTC (GMT+00:00)</option>
+              <option value="America/New_York">America/New_York (GMT-04:00)</option>
+              <option value="Europe/London">Europe/London (GMT+01:00)</option>
+              <option value="Asia/Tokyo">Asia/Tokyo (GMT+09:00)</option>
+            </select>
+          </div>
+          <div class="flex items-center">
+            <label class="w-40 text-gray-700 font-medium">Summary</label>
+            <div class="flex-1 text-gray-500">Once at 15:00, starting on Friday, July 4, 2025</div>
+          </div>
+        </div>
+
+        <div class="mb-8 flex items-center">
+          <label class="w-40 text-gray-700 font-medium">Custom headers</label>
+          <label class="inline-flex relative items-center cursor-pointer">
+            <input id="toggleHeaders" type="checkbox" class="sr-only peer">
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:bg-blue-500 transition-all"></div>
+            <div class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full shadow peer-checked:translate-x-5 transition-all"></div>
+          </label>
+        </div>
+        <div id="headerFields" class="flex items-center space-x-2 mb-8 hidden">
+          <input type="text" class="flex-1 border border-gray-300 rounded px-4 py-2" placeholder="Header name" />
+          <input type="text" class="flex-1 border border-gray-300 rounded px-4 py-2" placeholder="Header value" />
+          <button type="button" class="bg-blue-400 hover:bg-blue-500 text-white px-4 py-2 rounded"><i class="fas fa-plus"></i></button>
+        </div>
+        <div class="flex justify-end space-x-3">
+          <button type="button" id="cancelNewScan" class="px-6 py-2 rounded border border-gray-300 bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200">Cancel</button>
+          <button type="button" id="launchScanBtn" class="px-6 py-2 rounded bg-blue-400 text-white font-semibold hover:bg-blue-500">Launch</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    // Global variables for filtering
+    let allScans = [];
+    let filteredScans = [];
+    let allWebsites = [];
+    let selectedWebsiteIds = [];
+    let isLoading = false;
+
+    // Multi-select functionality for websites
+    function initWebsiteMultiSelect() {
+      const multiSelect = document.getElementById('websiteMultiSelect');
+      const dropdown = document.getElementById('websiteDropdown');
+      const selectedContainer = document.getElementById('selectedWebsites');
+
+      // Toggle dropdown
+      multiSelect.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dropdown.classList.toggle('show');
+      });
+
+      // Close dropdown when clicking outside
+      document.addEventListener('click', function() {
+        dropdown.classList.remove('show');
+      });
+
+      // Prevent dropdown from closing when clicking inside
+      dropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+      });
+    }
+
+    // Update website multi-select options
+    function updateWebsiteMultiSelect() {
+      const dropdown = document.getElementById('websiteDropdown');
+      const selectedContainer = document.getElementById('selectedWebsites');
+      
+      // Clear existing options
+      dropdown.innerHTML = '';
+      
+      // Add "All Websites" option
+      const allOption = document.createElement('div');
+      allOption.className = 'dropdown-option';
+      allOption.textContent = 'All Websites';
+      allOption.addEventListener('click', function() {
+        selectedWebsiteIds = [];
+        updateSelectedWebsitesDisplay();
+        filterScans();
+        dropdown.classList.remove('show');
+      });
+      dropdown.appendChild(allOption);
+      
+      // Add website options
+      allWebsites.forEach(website => {
+        const option = document.createElement('div');
+        option.className = 'dropdown-option';
+        if (selectedWebsiteIds.includes(website.id)) {
+          option.classList.add('selected');
+        }
+        option.textContent = website.name;
+        option.addEventListener('click', function() {
+          const index = selectedWebsiteIds.indexOf(website.id);
+          if (index > -1) {
+            selectedWebsiteIds.splice(index, 1);
+          } else {
+            selectedWebsiteIds.push(website.id);
+          }
+          updateSelectedWebsitesDisplay();
+          filterScans();
+          dropdown.classList.remove('show');
+        });
+        dropdown.appendChild(option);
+      });
+    }
+
+    // Update selected websites display
+    function updateSelectedWebsitesDisplay() {
+      const selectedContainer = document.getElementById('selectedWebsites');
+      
+      if (selectedWebsiteIds.length === 0) {
+        selectedContainer.innerHTML = '<span class="text-gray-400">All Websites</span>';
+        return;
+      }
+      
+      selectedContainer.innerHTML = '';
+      selectedWebsiteIds.forEach(websiteId => {
+        const website = allWebsites.find(w => String(w.id) === String(websiteId));
+        if (website) {
+          const tag = document.createElement('span');
+          tag.className = 'selected-option';
+          tag.innerHTML = `
+            ${website.name}
+            <span class="remove" onclick="removeWebsiteSelection(${websiteId})">&times;</span>
+          `;
+          selectedContainer.appendChild(tag);
+        }
+      });
+    }
+
+    // Remove website selection
+    function removeWebsiteSelection(websiteId) {
+      const index = selectedWebsiteIds.indexOf(websiteId);
+      if (index > -1) {
+        selectedWebsiteIds.splice(index, 1);
+        updateSelectedWebsitesDisplay();
+        filterScans();
+      }
+    }
+
+    // Load scans from API
+    function loadScans() {
+      if (isLoading) return;
+      isLoading = true;
+      
+      fetch('/api/history')
+        .then(res => res.json())
+        .then(data => {
+          console.log('Loaded scans:', data.scans);
+          allScans = data.scans || [];
+          // Sort scans by start_time (newest first)
+          allScans.sort((a, b) => {
+            const timeA = new Date(a.start_time || 0);
+            const timeB = new Date(b.start_time || 0);
+            return timeB - timeA; // Descending order (newest first)
+          });
+          filteredScans = [...allScans];
+          renderScanTable();
+          loadWebsitesForFilter();
+        })
+        .catch(error => {
+          console.error('Error loading scans:', error);
+        })
+        .finally(() => {
+          isLoading = false;
+        });
+    }
+
+    // Load websites for filter dropdown and modal
+    function loadWebsitesForFilter() {
+      fetch('/api/websites')
+        .then(res => res.json())
+        .then(data => {
+          allWebsites = (data.websites || []).map(w => ({...w, id: String(w.id)}));
+          updateWebsiteMultiSelect();
+          updateModalWebsiteSelect();
+          // If scans are already loaded, re-render the table
+          if (allScans.length > 0) renderScanTable();
+        })
+        .catch(error => {
+          console.error('Error loading websites:', error);
+        });
+    }
+    
+    // Update modal website select
+    function updateModalWebsiteSelect() {
+      const modalWebsiteSelect = document.getElementById('modalWebsiteSelect');
+      if (modalWebsiteSelect) {
+        modalWebsiteSelect.innerHTML = '<option value="">Select a website to scan</option>';
+        allWebsites.forEach(website => {
+          const option = document.createElement('option');
+          option.value = website.id;
+          option.textContent = `${website.name} (${website.address})`;
+          modalWebsiteSelect.appendChild(option);
+        });
+      }
+    }
+
+    // Render scan table with current filtered data
+    function renderScanTable() {
+      const tbody = document.getElementById('scanTableBody');
+      tbody.innerHTML = '';
+      
+      console.log('Rendering table with', filteredScans.length, 'scans');
+      
+      if (filteredScans.length > 0) {
+        filteredScans.forEach((scan, index) => {
+          console.log(`Rendering scan ${index + 1}/${filteredScans.length}:`, scan);
+          tbody.appendChild(renderScanRow(scan));
+        });
+      } else {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400 text-lg">No scans found</td></tr>';
+      }
+    }
+
+    // Render single scan row
+    function renderScanRow(scan) {
+      const tr = document.createElement('tr');
+      tr.classList.add('cursor-pointer', 'hover:bg-gray-50');
+      
+      // Find website name
+      const website = allWebsites.find(w => String(w.id) === String(scan.website_id));
+      const websiteName = website ? website.name : 'N/A';
+      
+      console.log('Rendering scan:', scan, 'Website:', website, 'Website name:', websiteName);
+      
+      // Format start time
+      const startTime = scan.start_time ? new Date(scan.start_time).toLocaleString() : 'N/A';
+      
+      // Format relative time
+      const relativeTime = scan.start_time ? getRelativeTime(new Date(scan.start_time)) : '';
+      
+      // Format duration
+      const duration = scan.duration ? `${scan.duration.toFixed(1)}s` : 'N/A';
+      
+      // Status badge
+      const statusBadge = getStatusBadge(scan.status);
+      
+      // Determine scan type
+      const scanType = getScanType(scan.target);
+      
+      tr.innerHTML = `
+        <td class="px-6 py-4 whitespace-nowrap">
+          <div class="text-sm font-medium text-gray-900">
+            ${scan.target}
+            ${isRecentScan(scan.start_time) ? '<span class="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">NEW</span>' : ''}
+          </div>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${websiteName}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${statusBadge}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${scanType}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+          <div>${startTime}</div>
+          ${relativeTime ? `<div class="text-xs text-gray-400">${relativeTime}</div>` : ''}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${duration}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+          <button class="text-blue-600 hover:text-blue-900" onclick="viewScanResults('${scan.scan_id}')">View</button>
+        </td>
+      `;
+      
+      return tr;
+    }
+
+    // Get status badge HTML
+    function getStatusBadge(status) {
+      const statusMap = {
+        'completed': { text: 'Completed', class: 'bg-green-100 text-green-800' },
+        'running': { text: 'Running', class: 'bg-blue-100 text-blue-800' },
+        'failed': { text: 'Failed', class: 'bg-red-100 text-red-800' }
+      };
+      
+      const statusInfo = statusMap[status] || { text: status, class: 'bg-gray-100 text-gray-800' };
+      
+      return `<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusInfo.class}">${statusInfo.text}</span>`;
+    }
+
+    // Get scan type based on target
+    function getScanType(target) {
+      if (!target) return 'Unknown';
+      // Simple check: if it's an IP address
+      const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+      return ipRegex.test(target) ? 'IP Address' : 'Domain';
+    }
+
+    // Get relative time (e.g., "2 minutes ago", "1 hour ago")
+    function getRelativeTime(date) {
+      // Nếu date là string không có Z hoặc offset, giả định là giờ Việt Nam
+      let d;
+      if (typeof date === 'string' && !date.endsWith('Z') && !date.includes('+')) {
+        // Parse thủ công theo múi giờ Việt Nam
+        // date dạng "2025-07-08T11:59:18"
+        const [y, m, day, h, min, s] = date.match(/\d+/g).map(Number);
+        d = new Date(Date.UTC(y, m - 1, day, h, min, s));
+        // Cộng thêm 7 tiếng để thành giờ Việt Nam
+        d = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+      } else {
+        d = typeof date === 'string' ? new Date(date) : date;
+      }
+      const now = new Date();
+
+      const diffInSeconds = Math.floor((now - d) / 1000);
+
+      if (diffInSeconds < 60) {
+        return 'Just now';
+      } else if (diffInSeconds < 3600) {
+        const minutes = Math.floor(diffInSeconds / 60);
+        return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+      } else if (diffInSeconds < 86400) {
+        const hours = Math.floor(diffInSeconds / 3600);
+        return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+      } else if (diffInSeconds < 2592000) {
+        const days = Math.floor(diffInSeconds / 86400);
+        return `${days} day${days > 1 ? 's' : ''} ago`;
+      } else {
+        const months = Math.floor(diffInSeconds / 2592000);
+        return `${months} month${months > 1 ? 's' : ''} ago`;
+      }
+    }
+
+    // Check if scan is recent (within last hour)
+    function isRecentScan(startTime) {
+      if (!startTime) return false;
+      const now = new Date();
+      const scanTime = new Date(startTime);
+      const diffInHours = (now - scanTime) / (1000 * 60 * 60);
+      return diffInHours < 1; // Less than 1 hour old
+    }
+
+    // View scan results
+    function viewScanResults(scanId) {
+      console.log('Viewing scan results for:', scanId);
+      
+      // Show modal
+      const modal = document.getElementById('scanDetailsModal');
+      const content = document.getElementById('scanDetailsContent');
+      
+      modal.classList.remove('hidden');
+      
+      // Show loading state
+      content.innerHTML = `
+        <div class="text-center py-8">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p class="mt-4 text-gray-600">Loading scan details...</p>
+        </div>
+      `;
+      
+      // Fetch scan results
+      fetch(`/api/scan/${scanId}/results`)
+        .then(res => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          return res.json();
+        })
+        .then(data => {
+          console.log('Scan results:', data);
+          displayScanResults(data, scanId);
+        })
+        .catch(error => {
+          console.error('Error fetching scan results:', error);
+          content.innerHTML = `
+            <div class="text-center py-8">
+              <div class="text-red-500 text-6xl mb-4">⚠️</div>
+              <h3 class="text-xl font-semibold text-gray-800 mb-2">Error Loading Results</h3>
+              <p class="text-gray-600 mb-4">Failed to load scan results for scan ID: ${scanId}</p>
+              <p class="text-sm text-gray-500">${error.message}</p>
+              <button onclick="closeScanDetailsModal()" class="mt-4 px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">Close</button>
+            </div>
+          `;
+        });
+    }
+
+    // Display scan results in modal
+    function displayScanResults(data, scanId) {
+      const content = document.getElementById('scanDetailsContent');
+      
+      // Format scan duration
+      const duration = data.scan_duration ? `${data.scan_duration.toFixed(1)}s` : 'N/A';
+      
+      // Format target type
+      const targetType = getScanType(data.target);
+      
+      // Count services by port
+      const serviceCount = data.services ? data.services.length : 0;
+      
+      // Count subdomains
+      const subdomainCount = data.subdomains ? data.subdomains.length : 0;
+      
+      content.innerHTML = `
+        <div class="mb-6">
+          <h2 class="text-2xl font-bold text-gray-800 mb-2">Scan Results</h2>
+          <p class="text-gray-600">Scan ID: ${scanId}</p>
+        </div>
+        
+        <!-- Scan Summary -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div class="bg-blue-50 p-4 rounded-lg">
+            <div class="text-blue-600 text-sm font-medium">Target</div>
+            <div class="text-lg font-semibold">${data.target}</div>
+            <div class="text-sm text-gray-500">${targetType}</div>
+          </div>
+          <div class="bg-green-50 p-4 rounded-lg">
+            <div class="text-green-600 text-sm font-medium">Open Ports</div>
+            <div class="text-lg font-semibold">${data.open_ports ? data.open_ports.length : 0}</div>
+            <div class="text-sm text-gray-500">Ports found</div>
+          </div>
+          <div class="bg-purple-50 p-4 rounded-lg">
+            <div class="text-purple-600 text-sm font-medium">Services</div>
+            <div class="text-lg font-semibold">${serviceCount}</div>
+            <div class="text-sm text-gray-500">Services detected</div>
+          </div>
+          <div class="bg-orange-50 p-4 rounded-lg">
+            <div class="text-orange-600 text-sm font-medium">Subdomains</div>
+            <div class="text-lg font-semibold">${subdomainCount}</div>
+            <div class="text-sm text-gray-500">Subdomains found</div>
+          </div>
+        </div>
+        
+        <!-- Scan Details -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Services Section -->
+          <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+              <i class="fas fa-server mr-2 text-blue-500"></i>
+              Services (${serviceCount})
+            </h3>
+            ${data.services && data.services.length > 0 ? `
+              <div class="space-y-3 max-h-96 overflow-y-auto">
+                ${data.services.map(service => `
+                  <div class="border border-gray-200 rounded p-3">
+                    <div class="flex justify-between items-start mb-2">
+                      <span class="font-medium text-gray-800">Port ${service.port}</span>
+                      <span class="text-sm text-gray-500">${service.protocol}</span>
+                    </div>
+                    <div class="text-sm text-gray-600">
+                      <div><strong>Service:</strong> ${
+  service.service_name && service.service_name !== 'unknown'
+    ? service.service_name
+    : (service.service && service.service !== 'unknown'
+        ? service.service
+        : (service.name || service.product || service.version || 'Unknown'))
+}</div>
+                      ${service.version ? `<div><strong>Version:</strong> ${service.version}</div>` : ''}
+                      ${service.product ? `<div><strong>Product:</strong> ${service.product}</div>` : ''}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : `
+              <div class="text-center py-8 text-gray-500">
+                <i class="fas fa-info-circle text-4xl mb-2"></i>
+                <p>No services detected</p>
+              </div>
+            `}
+          </div>
+          
+          <!-- Subdomains Section -->
+          <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+              <i class="fas fa-sitemap mr-2 text-green-500"></i>
+              Subdomains (${subdomainCount})
+            </h3>
+            ${data.subdomains && data.subdomains.length > 0 ? `
+              <div class="space-y-2 max-h-96 overflow-y-auto">
+                ${data.subdomains.map(subdomain => `
+                  <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <span class="text-sm font-medium">${subdomain.subdomain || subdomain}</span>
+                    ${subdomain.ip_address ? `
+                      <span class="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800">
+                        IP: ${subdomain.ip_address}
+                      </span>
+                    ` : ''}
+                    ${subdomain.http_status ? `
+                      <span class="text-xs px-2 py-1 rounded bg-purple-100 text-purple-800">
+                        HTTP: ${subdomain.http_status}
+                      </span>
+                    ` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            ` : `
+              <div class="text-center py-8 text-gray-500">
+                <i class="fas fa-info-circle text-4xl mb-2"></i>
+                <p>No subdomains found</p>
+              </div>
+            `}
+          </div>
+        </div>
+        
+        <!-- Host Information -->
+        ${data.host_info ? `
+          <div class="mt-6 bg-white border border-gray-200 rounded-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+              <i class="fas fa-info-circle mr-2 text-purple-500"></i>
+              Host Information
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              ${data.host_info.hostname ? `
+                <div>
+                  <span class="text-sm font-medium text-gray-600">Hostname:</span>
+                  <span class="ml-2 text-gray-800">${data.host_info.hostname}</span>
+                </div>
+              ` : ''}
+              ${data.host_info.ip_addresses ? `
+                <div>
+                  <span class="text-sm font-medium text-gray-600">IP Addresses:</span>
+                  <span class="ml-2 text-gray-800">${Array.isArray(data.host_info.ip_addresses) ? data.host_info.ip_addresses.join(', ') : data.host_info.ip_addresses}</span>
+                </div>
+              ` : ''}
+              ${data.host_info.country ? `
+                <div>
+                  <span class="text-sm font-medium text-gray-600">Country:</span>
+                  <span class="ml-2 text-gray-800">${data.host_info.country}</span>
+                </div>
+              ` : ''}
+              ${data.host_info.city ? `
+                <div>
+                  <span class="text-sm font-medium text-gray-600">City:</span>
+                  <span class="ml-2 text-gray-800">${data.host_info.city}</span>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        ` : ''}
+        
+        <!-- Scan Metadata -->
+        <div class="mt-6 bg-gray-50 rounded-lg p-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <span class="text-gray-600">Scan Duration:</span>
+              <span class="ml-2 font-medium">${duration}</span>
+            </div>
+            <div>
+              <span class="text-gray-600">Scan Type:</span>
+              <span class="ml-2 font-medium">${data.scan_type || 'Full Scan'}</span>
+            </div>
+            <div>
+              <span class="text-gray-600">Status:</span>
+              <span class="ml-2 font-medium text-green-600">Completed</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="mt-6 flex justify-end space-x-3">
+          <button onclick="downloadScanResults('${scanId}')" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center">
+            <i class="fas fa-download mr-2"></i>
+            Download JSON
+          </button>
+          <button onclick="closeScanDetailsModal()" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">
+            Close
+          </button>
+        </div>
+      `;
+    }
+
+    // Download scan results
+    function downloadScanResults(scanId) {
+      window.open(`/api/scan/${scanId}/download`, '_blank');
+    }
+
+    // Close scan details modal
+    function closeScanDetailsModal() {
+      document.getElementById('scanDetailsModal').classList.add('hidden');
+    }
+
+    // Filter scans based on current filter values
+    function filterScans() {
+      const statusFilter = document.getElementById('statusFilter').value;
+      const typeFilter = document.getElementById('typeFilter').value;
+      const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
+      const dateRangeFilter = document.getElementById('scanDateRange').value;
+      
+      console.log('Filtering scans with:', {
+        statusFilter,
+        typeFilter,
+        searchFilter,
+        dateRangeFilter,
+        selectedWebsiteIds
+      });
+
+      filteredScans = allScans.filter(scan => {
+        // Website filter (multi-select)
+        if (selectedWebsiteIds.length > 0 && !selectedWebsiteIds.map(String).includes(String(scan.website_id))) {
+          return false;
+        }
+
+        // Status filter
+        if (statusFilter && scan.status !== statusFilter) {
+          return false;
+        }
+
+        // Type filter
+        if (typeFilter) {
+          const scanType = getScanType(scan.target);
+          if (scanType !== typeFilter) {
+            return false;
+          }
+        }
+
+        // Search filter
+        if (searchFilter) {
+          const website = allWebsites.find(w => String(w.id) === String(scan.website_id));
+          const websiteName = website ? website.name : '';
+          const searchText = `${scan.target} ${websiteName} ${scan.status} ${getScanType(scan.target)}`.toLowerCase();
+          if (!searchText.includes(searchFilter)) {
+            return false;
+          }
+        }
+
+        // Date range filter
+        if (dateRangeFilter && dateRangeFilter.trim() !== '') {
+          try {
+            const scanDate = new Date(scan.start_time);
+            if (isNaN(scanDate.getTime())) return false; // Invalid scan date
+            
+            const [startDateStr, endDateStr] = dateRangeFilter.split(' to ');
+            
+            if (startDateStr && startDateStr.trim() !== '') {
+              // Parse date in d/m/Y format
+              const [day, month, year] = startDateStr.trim().split('/');
+              const startDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 0, 0, 0);
+              if (scanDate < startDate) return false;
+            }
+            
+            if (endDateStr && endDateStr.trim() !== '') {
+              // Parse date in d/m/Y format
+              const [day, month, year] = endDateStr.trim().split('/');
+              const endDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 23, 59, 59);
+              if (scanDate > endDate) return false;
+            }
+          } catch (error) {
+            console.error('Error parsing date range:', error);
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      // Sort filtered results by start_time (newest first)
+      filteredScans.sort((a, b) => {
+        const timeA = new Date(a.start_time || 0);
+        const timeB = new Date(b.start_time || 0);
+        return timeB - timeA; // Descending order (newest first)
+      });
+
+      console.log(`Filtered ${allScans.length} scans to ${filteredScans.length} results`);
+      renderScanTable();
+    }
+
+    // Clear all filters
+    function clearAllFilters() {
+      // Clear website selection
+      selectedWebsiteIds = [];
+      updateSelectedWebsitesDisplay();
+      
+      // Clear status filter
+      document.getElementById('statusFilter').value = '';
+      
+      // Clear type filter
+      document.getElementById('typeFilter').value = '';
+      
+      // Clear search filter
+      document.getElementById('searchFilter').value = '';
+      
+      // Clear date range filter
+      const dateRangePicker = document.getElementById('scanDateRange')._flatpickr;
+      if (dateRangePicker) {
+        dateRangePicker.clear();
+      }
+      
+      console.log('All filters cleared');
+      filterScans();
+    }
+
+    // Launch scan from modal
+    function launchScan() {
+      const websiteId = document.getElementById('modalWebsiteSelect').value;
+      if (!websiteId) {
+        alert('Please select a website to scan');
+        return;
+      }
+
+      const website = allWebsites.find(w => String(w.id) === String(websiteId));
+      if (!website) {
+        alert('Selected website not found');
+        return;
+      }
+
+      // Disable launch button and show loading
+      const launchBtn = document.getElementById('launchScanBtn');
+      const originalText = launchBtn.textContent;
+      launchBtn.disabled = true;
+      launchBtn.textContent = 'Launching...';
+
+      // Start scan
+      fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          target: website.address,
+          website_id: parseInt(websiteId)
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          alert('Scan failed: ' + data.error);
+        } else {
+          alert('Scan started successfully!');
+          closeNewScanModal();
+          // Refresh scan list after a short delay
+          setTimeout(() => {
+            loadScans();
+          }, 1000);
+        }
+      })
+      .catch(error => {
+        console.error('Error starting scan:', error);
+        alert('Failed to start scan');
+      })
+      .finally(() => {
+        // Re-enable button
+        launchBtn.disabled = false;
+        launchBtn.textContent = originalText;
+      });
+    }
+
+    // Modal logic for New Scan
+    const openNewScanBtn = document.getElementById('openNewScan');
+    const newScanModal = document.getElementById('newScanModal');
+    const closeNewScanBtn = document.getElementById('closeNewScan');
+    const cancelNewScanBtn = document.getElementById('cancelNewScan');
+    
+    // Modal logic for Scan Details
+    const scanDetailsModal = document.getElementById('scanDetailsModal');
+    const closeScanDetailsBtn = document.getElementById('closeScanDetails');
+    
+    function openNewScanModal() {
+      newScanModal.classList.remove('hidden');
+    }
+    
+    function closeNewScanModal() {
+      newScanModal.classList.add('hidden');
+    }
+    
+    openNewScanBtn.addEventListener('click', openNewScanModal);
+    closeNewScanBtn.addEventListener('click', closeNewScanModal);
+    cancelNewScanBtn.addEventListener('click', closeNewScanModal);
+    
+    // Scan Details Modal event listeners
+    closeScanDetailsBtn.addEventListener('click', closeScanDetailsModal);
+    
+    newScanModal.addEventListener('click', (e) => {
+      if (e.target === newScanModal) {
+        closeNewScanModal();
+      }
+    });
+    
+    scanDetailsModal.addEventListener('click', (e) => {
+      if (e.target === scanDetailsModal) {
+        closeScanDetailsModal();
+      }
+    });
+
+    // Toggle Schedule fields
+    const toggleSchedule = document.getElementById('toggleSchedule');
+    const scheduleFields = document.getElementById('scheduleFields');
+    toggleSchedule.addEventListener('change', function() {
+      if (this.checked) {
+        scheduleFields.classList.remove('hidden');
+      } else {
+        scheduleFields.classList.add('hidden');
+      }
+    });
+
+    // Toggle Custom header fields
+    const toggleHeaders = document.getElementById('toggleHeaders');
+    const headerFields = document.getElementById('headerFields');
+    toggleHeaders.addEventListener('change', function() {
+      if (this.checked) {
+        headerFields.classList.remove('hidden');
+      } else {
+        headerFields.classList.add('hidden');
+      }
+    });
+
+    // Flatpickr for Start Time and Date Range
+    window.addEventListener('DOMContentLoaded', function() {
+      // Initialize multi-select
+      initWebsiteMultiSelect();
+      
+      // Flatpickr for Start Time
+      flatpickr("#startTimeInput", {
+        enableTime: true,
+        dateFormat: "d/m/Y H:i:S",
+        time_24hr: true,
+        defaultDate: "04/07/2025 15:00:00"
+      });
+      
+      // Flatpickr for scan date filter (range)
+      flatpickr("#scanDateRange", {
+        mode: "range",
+        dateFormat: "d/m/Y",
+        allowInput: true,
+        placeholder: "Select date range",
+        onChange: function(selectedDates, dateStr) {
+          console.log('Date range changed:', dateStr);
+          filterScans();
+        },
+        onClear: function() {
+          console.log('Date range cleared');
+          filterScans();
+        }
+      });
+      
+      // Load initial data
+      loadScans();
+      
+             // Add event listeners for filters
+       document.getElementById('statusFilter').addEventListener('change', filterScans);
+       document.getElementById('typeFilter').addEventListener('change', filterScans);
+       document.getElementById('searchFilter').addEventListener('input', filterScans);
+       document.getElementById('clearFiltersBtn').addEventListener('click', clearAllFilters);
+      
+      // Add event listener for launch scan button
+      document.getElementById('launchScanBtn').addEventListener('click', launchScan);
+      
+      // Check for newscan parameter
+      if (window.location.search.includes('newscan=1')) {
+        setTimeout(() => {
+          openNewScanModal();
+        }, 200);
+      }
+    });
+
+    // Tab switching logic
+    const tabScanHistory = document.getElementById('tabScanHistory');
+    const tabSchedule = document.getElementById('tabSchedule');
+    const scanHistoryContent = document.getElementById('scanHistoryContent');
+    const scheduleContent = document.getElementById('scheduleContent');
+    
+    tabScanHistory.addEventListener('click', function() {
+      tabScanHistory.classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+      tabScanHistory.classList.remove('text-gray-500', 'border-transparent');
+      tabSchedule.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+      tabSchedule.classList.add('text-gray-500', 'border-transparent');
+      scanHistoryContent.classList.remove('hidden');
+      scheduleContent.classList.add('hidden');
+    });
+    
+    tabSchedule.addEventListener('click', function() {
+      tabSchedule.classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+      tabSchedule.classList.remove('text-gray-500', 'border-transparent');
+      tabScanHistory.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+      tabScanHistory.classList.add('text-gray-500', 'border-transparent');
+      scanHistoryContent.classList.add('hidden');
+      scheduleContent.classList.remove('hidden');
+    });
+  </script>
+  
+  <!-- Chat button (bottom right) -->
+  <div class="fixed bottom-6 right-6">
+    <button class="w-14 h-14 bg-blue-600 rounded-full shadow-lg flex items-center justify-center text-white text-3xl focus:outline-none">
+      <i class="fas fa-comment-dots"></i>
+    </button>
+  </div>
+</body>
+</html> 
