@@ -16,6 +16,7 @@ import bs4
 import sys
 import os
 import re
+import time
 from tqdm.auto import tqdm
 import warnings
 from urllib3.exceptions import InsecureRequestWarning
@@ -23,6 +24,14 @@ import asyncio
 import httpx
 import aiodns
 import subprocess
+import dns.asyncresolver
+import dns.exception
+import dns.query
+import dns.zone
+from urllib.parse import urljoin, urlparse
+from bs4 import BeautifulSoup
+import logging
+logger = logging.getLogger(__name__)
 
 # Suppress the warnings from urllib3
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -30,6 +39,84 @@ requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 __version__ = '7.0.2'
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
+
+def brave_search_subdomains(domain: str, api_key: str, max_results: int = 100) -> list:
+    """
+    Tìm subdomain bằng Brave Search API
+    """
+    subdomains = set()
+    
+    try:
+        # Brave Search API endpoint
+        url = "https://api.search.brave.com/res/v1/web/search"
+        
+        # Các query patterns để tìm subdomain
+        search_queries = [
+            f'site:*.{domain}',
+            f'"{domain}" subdomain',
+            f'"{domain}" -site:{domain}',
+            f'*.{domain}',
+            f'"{domain}" inurl:',
+            f'"{domain}" hostname'
+        ]
+        
+        headers = {
+            'Accept': 'application/json',
+            'X-Subscription-Token': api_key
+        }
+        
+        for query in search_queries:
+            try:
+                params = {
+                    'q': query,
+                    'count': min(max_results, 50),  # Brave API limit
+                    'safesearch': 'off'
+                }
+                
+                response = requests.get(url, headers=headers, params=params, timeout=10)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                if 'web' in data and 'results' in data['web']:
+                    for result in data['web']['results']:
+                        # Extract URLs from search results
+                        if 'url' in result:
+                            url = result['url']
+                            # Parse URL to extract subdomain
+                            parsed = urlparse(url)
+                            hostname = parsed.netloc
+                            
+                            # Check if it's a subdomain of our target domain
+                            if hostname.endswith(f'.{domain}') and hostname != domain:
+                                subdomain = hostname.replace(f'.{domain}', '')
+                                if subdomain and '.' not in subdomain:  # Avoid nested subdomains
+                                    subdomains.add(f"{subdomain}.{domain}")
+                        
+                        # Also check title and description for subdomain mentions
+                        for field in ['title', 'description']:
+                            if field in result:
+                                text = result[field]
+                                # Find subdomain patterns in text
+                                pattern = rf'\b([a-zA-Z0-9_-]+\.{re.escape(domain)})\b'
+                                matches = re.findall(pattern, text)
+                                for match in matches:
+                                    if match.endswith(f'.{domain}') and match != domain:
+                                        subdomain = match.replace(f'.{domain}', '')
+                                        if subdomain and '.' not in subdomain:
+                                            subdomains.add(match)
+                
+                # Rate limiting - wait a bit between requests
+                time.sleep(0.5)
+                
+            except Exception as e:
+                logger.warning(f"Brave search query '{query}' failed: {e}")
+                continue
+                
+    except Exception as e:
+        logger.error(f"Brave search failed: {e}")
+    
+    return list(subdomains)
 
 # bruteforce via wordlist
 class Bruteforce:
@@ -109,6 +196,11 @@ class Recon:
         API_KEY_SHODAN = os.getenv("API_KEY_SHODAN")
         if API_KEY_SHODAN:
             services_list.append(("shodan", f"https://api.shodan.io/dns/domain/{self.domain}?key={API_KEY_SHODAN}"))
+
+        # Add Brave Search if API key is available
+        API_KEY_BRAVE = os.getenv("API_KEY_BRAVE")
+        if API_KEY_BRAVE:
+            services_list.append(("brave_search", "BRAVE_SEARCH_API"))  # Special marker for Brave Search
 
         return services_list
 
@@ -191,6 +283,17 @@ class Recon:
                             if match and re.match(r"^[a-zA-Z0-9-\.]*$", match.groups()[1]):
                                 subdomains += [item for item in match.groups()[1] if item.endswith(self.domain)]
                     except:
+                        pass
+                elif name == "brave_search":
+                    try:
+                        # Handle Brave Search API separately since it's not a simple HTTP request
+                        API_KEY_BRAVE = os.getenv("API_KEY_BRAVE")
+                        if API_KEY_BRAVE:
+                            brave_results = brave_search_subdomains(self.domain, API_KEY_BRAVE)
+                            subdomains.extend(brave_results)
+                    except Exception as e:
+                        if not self.silent:
+                            print(f"Brave search failed: {e}")
                         pass
                         
             subdomains = [s for s in list(OrderedDict.fromkeys(subdomains)) if '*' not in s]
@@ -359,52 +462,442 @@ def KNOCKPY(domain, dns=None, useragent=None, timeout=None, threads=None, recon=
 
     return knockpy(domain, dns=None, useragent=None, timeout=None)
 
-def enrich_one_async(sub, timeout=2):
-    async def _enrich():
-        info = {"domain": sub, "ip": None, "http": None, "https": None, "cert": None, "error": ""}
-        resolver = aiodns.DNSResolver()
-        # DNS
-        try:
-            result = await resolver.gethostbyname(sub, family=2)
-            info["ip"] = result.addresses[0]
-        except Exception as e:
-            info["error"] += f"DNS error: {e} | "
-        # HTTP
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.get(f"http://{sub}")
-                info["http"] = [resp.status_code, None, None]
-        except Exception as e:
-            info["http"] = [None, None, None]
-            info["error"] += f"HTTP error: {e} | "
-        # HTTPS
-        try:
-            async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
-                resp = await client.get(f"https://{sub}")
-                info["https"] = [resp.status_code, None, None]
-        except Exception as e:
-            info["https"] = [None, None, None]
-            info["error"] += f"HTTPS error: {e}"
-        return info
-    return _enrich()
+async def fetch_dns_records(domain, nameserver=None, timeout=3):
+    """
+    Lấy các bản ghi NS, MX, TXT, AXFR cho domain. Trả về dict các record và list subdomain tìm được.
+    """
+    import aiodns
+    resolver = aiodns.DNSResolver()
+    if nameserver:
+        resolver.nameservers = [nameserver]
+    records = {"NS": [], "MX": [], "TXT": [], "AXFR": []}
+    subdomains = set()
+    # NS
+    try:
+        ns_result = await resolver.query(domain, 'NS')
+        records["NS"] = [r.host for r in ns_result]
+        subdomains.update(records["NS"])
+    except Exception:
+        pass
+    # MX
+    try:
+        mx_result = await resolver.query(domain, 'MX')
+        records["MX"] = [r.host for r in mx_result]
+        subdomains.update(records["MX"])
+    except Exception:
+        pass
+    # TXT
+    try:
+        txt_result = await resolver.query(domain, 'TXT')
+        records["TXT"] = [r.text for r in txt_result]
+    except Exception:
+        pass
+    # AXFR (zone transfer)
+    try:
+        ns_to_try = records["NS"] if records["NS"] else [domain]
+        for ns in ns_to_try:
+            try:
+                zone = await dns.zone.async_from_xfr(dns.query.xfr(ns, domain, timeout=timeout))
+                for name, node in zone.nodes.items():
+                    fqdn = f"{name}.{domain}" if str(name) != '@' else domain
+                    records["AXFR"].append(fqdn)
+                    subdomains.add(fqdn)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return records, list(subdomains)
 
-async def enrich_subdomains_async(subdomains, timeout=2, max_concurrent=20):
+async def enrich_one_async(sub, timeout=2):
+    info = {"domain": sub, "ip": None, "http": None, "https": None, "cert": None, "error": ""}
+    resolver = aiodns.DNSResolver()
+    # DNS
+    try:
+        result = await resolver.gethostbyname(sub, family=2)
+        info["ip"] = result.addresses[0]
+    except Exception as e:
+        info["error"] += f"DNS error: {e} | "
+    # HTTP
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(f"http://{sub}")
+            info["http"] = [resp.status_code, None, None]
+    except Exception as e:
+        info["http"] = [None, None, None]
+        info["error"] += f"HTTP error: {e} | "
+    # HTTPS
+    try:
+        async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
+            resp = await client.get(f"https://{sub}")
+            info["https"] = [resp.status_code, None, None]
+    except Exception as e:
+        info["https"] = [None, None, None]
+        info["error"] += f"HTTPS error: {e}"
+    return info
+
+async def crawl_html_for_subdomains(domain, urls=None, timeout=5, max_pages=5):
+    """
+    Crawl trang chủ và các trang con, extract subdomain từ HTML links (href, src, form action, ...).
+    Trả về list subdomain tìm được.
+    """
+    import re
+    import httpx
+    from collections import deque
+    visited = set()
+    found_subdomains = set()
+    if not urls:
+        urls = [f"http://{domain}", f"https://{domain}"]
+    queue = deque(urls)
+    pattern = re.compile(rf"([a-zA-Z0-9_-]+\\.{re.escape(domain)})")
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
+        pages_crawled = 0
+        while queue and pages_crawled < max_pages:
+            url = queue.popleft()
+            if url in visited:
+                continue
+            visited.add(url)
+            try:
+                resp = await client.get(url)
+                html = resp.text
+                soup = BeautifulSoup(html, "html.parser")
+                # Extract all links, src, form actions
+                tags = soup.find_all(['a', 'link', 'script', 'img', 'iframe', 'form'])
+                for tag in tags:
+                    for attr in ['href', 'src', 'action']:
+                        link = tag.get(attr)
+                        if link:
+                            # Normalize relative URLs
+                            full_url = urljoin(url, link)
+                            # Extract subdomain
+                            for match in pattern.findall(full_url):
+                                if match.endswith(domain):
+                                    found_subdomains.add(match)
+                            # Thêm vào queue nếu cùng domain và chưa crawl
+                            parsed = urlparse(full_url)
+                            if parsed.netloc.endswith(domain) and full_url not in visited:
+                                queue.append(full_url)
+                pages_crawled += 1
+            except Exception:
+                continue
+    return list(found_subdomains)
+
+async def reverse_dns_on_ips(ips, domain=None, timeout=3, max_concurrent=20):
+    """
+    Thực hiện reverse DNS (PTR) trên list IP, lọc ra subdomain thuộc domain mục tiêu (nếu có).
+    Trả về list subdomain tìm được.
+    """
+    import aiodns
+    import asyncio
+    found = set()
     sem = asyncio.Semaphore(max_concurrent)
+    async def ptr_lookup(ip):
+        async with sem:
+            try:
+                resolver = aiodns.DNSResolver(timeout=timeout)
+                result = await resolver.gethostbyaddr(ip)
+                if result and result.name:
+                    if domain:
+                        if result.name.endswith(domain):
+                            found.add(result.name.rstrip('.'))
+                    else:
+                        found.add(result.name.rstrip('.'))
+            except Exception:
+                pass
+    await asyncio.gather(*(ptr_lookup(ip) for ip in ips))
+    return list(found)
+
+async def resolve_cname_chain(subdomain, timeout=3, max_depth=5):
+    """
+    Resolve CNAME chain cho subdomain, trả về list các CNAME trung gian và A record cuối cùng (nếu có).
+    """
+    import aiodns
+    chain = []
+    current = subdomain
+    depth = 0
+    resolver = aiodns.DNSResolver(timeout=timeout)
+    try:
+        while depth < max_depth:
+            try:
+                result = await resolver.query(current, 'CNAME')
+                cname = result[0].host.rstrip('.')
+                chain.append(cname)
+                current = cname
+                depth += 1
+            except Exception:
+                break
+        # Resolve A record cuối cùng nếu có
+        try:
+            a_result = await resolver.query(current, 'A')
+            a_ips = [r.host for r in a_result]
+            return chain, a_ips
+        except Exception:
+            return chain, []
+    except Exception:
+        return chain, []
+
+async def enrich_one_subdomain(sub, domain=None, timeout=5):
+    """
+    Enrich 1 subdomain: DNS (A, AAAA, MX, TXT, NS), CNAME chain, reverse DNS, HTTP/HTTPS, SSL cert.
+    Trả về dict chi tiết, tối ưu cho popup recon từng subdomain.
+    """
+    import aiodns
+    import httpx
+    import ssl
+    import OpenSSL
+    import socket
+    from datetime import datetime
+    
+    result = {
+        "subdomain": sub,
+        "ip": None,
+        "dns": {},
+        "cname_chain": [],
+        "reverse_dns": None,
+        "http": None,
+        "https": None,
+        "cert": None,
+        "error": "",
+        "enriched_at": datetime.now().isoformat()
+    }
+    
+    resolver = aiodns.DNSResolver(timeout=timeout)
+    
+    # DNS records
+    try:
+        for rtype in ["A", "AAAA", "MX", "TXT", "NS", "CNAME"]:
+            try:
+                ans = await resolver.query(sub, rtype)
+                if rtype in ["A", "AAAA"]:
+                    result["dns"][rtype] = [r.host for r in ans]
+                    if rtype == "A" and ans:
+                        result["ip"] = ans[0].host
+                elif rtype == "MX":
+                    result["dns"][rtype] = [r.host for r in ans]
+                elif rtype == "TXT":
+                    result["dns"][rtype] = [r.text for r in ans]
+                elif rtype == "NS":
+                    result["dns"][rtype] = [r.host for r in ans]
+                elif rtype == "CNAME":
+                    result["dns"][rtype] = [r.host.rstrip('.') for r in ans]
+            except Exception:
+                result["dns"][rtype] = []
+    except Exception as e:
+        result["error"] += f"DNS error: {e} | "
+    
+    # CNAME chain
+    try:
+        cname_chain = []
+        current = sub
+        for _ in range(5):
+            try:
+                ans = await resolver.query(current, "CNAME")
+                cname = ans[0].host.rstrip('.')
+                cname_chain.append(cname)
+                current = cname
+            except Exception:
+                break
+        result["cname_chain"] = cname_chain
+    except Exception as e:
+        result["error"] += f"CNAME error: {e} | "
+    
+    # Reverse DNS
+    try:
+        if result["ip"]:
+            ptr = await resolver.gethostbyaddr(result["ip"])
+            result["reverse_dns"] = ptr.name.rstrip('.')
+    except Exception:
+        result["reverse_dns"] = None
+    
+    # HTTP/HTTPS with better error handling
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+    }
+    
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout, connect=timeout/2),
+            follow_redirects=True, 
+            verify=False,
+            headers=headers,
+            http2=False  # Disable HTTP/2 to avoid issues
+        ) as client:
+            # HTTP
+            try:
+                resp = await client.get(f"http://{sub}")
+                result["http"] = {
+                    "status": resp.status_code,
+                    "url": str(resp.url),
+                    "headers": dict(resp.headers),
+                    "redirect": resp.headers.get("location"),
+                    "server": resp.headers.get("server"),
+                    "content_type": resp.headers.get("content-type"),
+                    "content_length": resp.headers.get("content-length"),
+                    "title": None
+                }
+                # Try to extract title
+                try:
+                    if resp.headers.get("content-type", "").startswith("text/html"):
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(resp.text, "html.parser")
+                        title_tag = soup.find("title")
+                        if title_tag:
+                            result["http"]["title"] = title_tag.get_text().strip()
+                except:
+                    pass
+            except Exception as e:
+                result["http"] = {"error": str(e)}
+            
+            # HTTPS
+            try:
+                resp = await client.get(f"https://{sub}")
+                result["https"] = {
+                    "status": resp.status_code,
+                    "url": str(resp.url),
+                    "headers": dict(resp.headers),
+                    "redirect": resp.headers.get("location"),
+                    "server": resp.headers.get("server"),
+                    "content_type": resp.headers.get("content-type"),
+                    "content_length": resp.headers.get("content-length"),
+                    "title": None
+                }
+                # Try to extract title
+                try:
+                    if resp.headers.get("content-type", "").startswith("text/html"):
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(resp.text, "html.parser")
+                        title_tag = soup.find("title")
+                        if title_tag:
+                            result["https"]["title"] = title_tag.get_text().strip()
+                except:
+                    pass
+            except Exception as e:
+                result["https"] = {"error": str(e)}
+    except Exception as e:
+        result["error"] += f"HTTP error: {e} | "
+    
+    # SSL cert with better error handling
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection((sub, 443), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=sub) as ssock:
+                cert_bin = ssock.getpeercert(True)
+                x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert_bin)
+                
+                # Get subject alternative names
+                san_list = []
+                for i in range(x509.get_extension_count()):
+                    ext = x509.get_extension(i)
+                    if ext.get_short_name() == b'subjectAltName':
+                        san_str = str(ext)
+                        san_list = [name.strip() for name in san_str.split(',') if 'DNS:' in name]
+                        break
+                
+                result["cert"] = {
+                    "subject": x509.get_subject().CN,
+                    "issuer": x509.get_issuer().CN,
+                    "not_before": x509.get_notBefore().decode(),
+                    "not_after": x509.get_notAfter().decode(),
+                    "serial_number": str(x509.get_serial_number()),
+                    "subject_alt_names": san_list,
+                    "version": x509.get_version()
+                }
+    except Exception as e:
+        result["cert"] = {"error": str(e)}
+    
+    return result
+    return result
+
+# === EXPORTABLE API ===
+
+def get_subdomains(domain, recon=True, bruteforce=False, wordlist=None, timeout=3, silent=False):  # Tắt bruteforce mặc định
+    """
+    Thu thập subdomain từ recon và bruteforce.
+    Trả về list subdomain (chuỗi).
+    """
+    subdomains = set()
+    if recon:
+        subdomains.update(Recon(domain, timeout, silent).start())
+    if bruteforce:
+        subdomains.update(Bruteforce(domain, wordlist).start())
+    return list(subdomains)
+
+async def enrich_subdomains_async(subdomains, timeout=8, max_concurrent=5):
+    """
+    Nhận list subdomain, trả về list dict đã enrich (DNS, HTTP, HTTPS).
+    Cải thiện: timeout dài hơn, concurrent thấp hơn, sử dụng enrich_one_subdomain.
+    """
+    sem = asyncio.Semaphore(max_concurrent)
+    
     async def sem_enrich(sub):
         async with sem:
-            return await enrich_one_async(sub, timeout)
-    enriched = await asyncio.gather(*(sem_enrich(sub) for sub in subdomains))
-    cleaned = []
+            try:
+                return await enrich_one_subdomain(sub, timeout=timeout)
+            except Exception as e:
+                return {
+                    "subdomain": sub,
+                    "error": f"Enrich failed: {str(e)}",
+                    "ip": None,
+                    "dns": {},
+                    "http": None,
+                    "https": None,
+                    "cert": None
+                }
+    
+    # Enrich tất cả subdomain với function mới
+    results = await asyncio.gather(*(sem_enrich(sub) for sub in subdomains))
+    
+    # Lọc subdomain có IP
+    valid_results = [r for r in results if r.get("ip")]
+    
+    logger.info(f"Found {len(valid_results)} subdomains with IP out of {len(subdomains)}")
+    
+    return valid_results
+
+async def detect_wildcard_ips(domain, timeout=3):
+    """
+    Sinh 2 subdomain ngẫu nhiên, resolve IP, trả về set IP wildcard (nếu có).
+    """
+    resolver = aiodns.DNSResolver()
+    ips = set()
+    for _ in range(2):
+        fake_sub = Bruteforce(domain).wildcard()
+        try:
+            result = await resolver.gethostbyname(fake_sub, family=2)
+            ips.update(result.addresses)
+        except Exception:
+            pass
+    return ips
+
+def deduplicate_by_ip(enriched):
+    """
+    Lọc trùng IP: chỉ giữ lại 1 subdomain cho mỗi IP duy nhất.
+    """
+    seen = set()
+    deduped = []
     for sd in enriched:
-        cleaned.append({
-            "domain": sd.get("domain"),
-            "ip": sd.get("ip"),
-            "http": sd.get("http"),
-            "https": sd.get("https"),
-            "cert": sd.get("cert"),
-            "error": sd.get("error") if "error" in sd else None
-        })
-    return cleaned
+        ip = sd.get('ip')
+        if ip and ip not in seen:
+            seen.add(ip)
+            deduped.append(sd)
+    return deduped
+
+def filter_live_domains(enriched):
+    """
+    Lọc domain sống: chỉ giữ lại subdomain có http hoặc https trả về mã 200, 301, 302.
+    """
+    valid_codes = {200, 301, 302}
+    filtered = []
+    for sd in enriched:
+        http_code = sd.get('http', [None])[0]
+        https_code = sd.get('https', [None])[0]
+        if (http_code in valid_codes) or (https_code in valid_codes):
+            filtered.append(sd)
+    return filtered
 
 def output(results, json_output=None):
     if not results:
@@ -475,7 +968,7 @@ def scan_subdomains(domain, wordlist=None):
     if not wordlist:
         wordlist = os.path.join(os.path.dirname(__file__), 'wordlist', 'wordlist.txt')
     print(f"[knockpy] Using wordlist: {wordlist}")
-    return KNOCKPY(domain, recon=True, bruteforce=True, wordlist=wordlist)
+    return KNOCKPY(domain, recon=True, bruteforce=False, wordlist=wordlist)  # Tắt bruteforce mặc định
 
 def scan_subdomains_cli(domain):
     knockpy_path = os.path.join(os.path.dirname(__file__), 'knockpy.py')
@@ -497,98 +990,117 @@ def scan_subdomains_cli(domain):
         print(f"[knockpy] Error parsing output: {e}")
         return []
 
-def main():
-    parser = argparse.ArgumentParser(
-        prog="KNOCKPY", 
-        description=f"knockpy v.{__version__} - Subdomain Scan\nhttps://github.com/guelfoweb/knock", 
-        formatter_class=argparse.RawTextHelpFormatter
-        )
-
-    # args
-    parser.add_argument("-d", "--domain", help="Domain to analyze.")
-    parser.add_argument("-f", "--file", help="Path to a file containing a list of domains.")
-    parser.add_argument("-v", "--version", action="version", version="%(prog)s " + __version__)
-    parser.add_argument("--dns", help="Custom DNS server.", dest="dns", required=False)
-    parser.add_argument("--useragent", help="Custom User-Agent string.", dest="useragent", required=False)
-    parser.add_argument("--timeout", help="Custom timeout in seconds.", dest="timeout", type=float, required=False)
-    parser.add_argument("--threads", help="Number of threads to use.", dest="threads", type=int, required=False)
-    parser.add_argument("--recon", help="Enable subdomain reconnaissance.", action="store_true", required=False)
-    parser.add_argument("--bruteforce", help="Enable subdomain brute-forcing.", action="store_true", required=False)
-    parser.add_argument("--wordlist", help="Path to a wordlist file (required for --bruteforce).", dest="wordlist", required=False)
-    parser.add_argument('--wildcard', help="Test for wildcard DNS and exit.", action="store_true", required=False)
-    parser.add_argument('--json', help="Output results in JSON format.", action="store_true", required=False)
-    parser.add_argument("--save", help="Directory to save the report.", dest="folder", required=False)
-    parser.add_argument("--report", help="Display a saved report.", dest="report", required=False)
-    parser.add_argument("--silent", help="Suppress progress bar output.", action="store_true", required=False)
-    args = parser.parse_args()
-
-    #print (args)
+def generate_alterations(subdomains, extra_words=None):
+    """
+    Sinh biến thể subdomain (alteration search): thêm số, tiền tố/hậu tố, thay thế ký tự, ...
+    Trả về list subdomain biến thể.
+    """
+    import itertools
+    alterations = set()
+    # Các hậu tố, tiền tố phổ biến
+    prefixes = ['dev', 'test', 'staging', 'beta', 'old', 'new', '1', '2']
+    suffixes = ['dev', 'test', 'staging', 'beta', 'old', 'new', '1', '2']
+    replaces = {'-': '', '_': '', '0': 'o', '1': 'l', 'l': '1', 'o': '0'}
     
-    if not args.domain and not args.file:
-        # looking for stdin
-        if not sys.stdin.isatty():
-            stdin = [domain.strip() for domain in sys.stdin.readlines()]
-            # can be file or domain
-            if len(stdin) == 1:
-                # check if is file
-                # echo "/path/to/domains.txt" | knockpy
-                if os.path.isfile(stdin[0]):
-                    args.file = stdin[0]
-                # otherwise domain is passed
-                # echo "domain.com" | knockpy
-                else:
-                    args.domain = stdin[0]
-            # domains list via file
-            # cat domains.txt | knockpy
-            elif len(stdin) > 1:
-                args.domain = stdin
-        elif args.report:
-            show_report(args.json, args.report)
-            sys.exit(0)
-        # no args and not stdin
-        # shows help and exit
+    # Convert subdomains to strings if they are dictionaries
+    subdomain_strings = set()
+    for sub in subdomains:
+        if isinstance(sub, dict):
+            subdomain_strings.add(sub.get('subdomain', ''))
         else:
-            parser.print_help(sys.stderr)
-            sys.exit(0)
-
-    if args.domain:
-        domain = args.domain
-        if args.wildcard:
-            domain = Bruteforce(domain).wildcard()
-            results = KNOCKPY(domain, args.dns, args.useragent, args.timeout, args.silent)
-            output(results, args.json)
-            sys.exit(0)
-
-        if args.recon and args.bruteforce:
-            #print ("bruteforce", args.wordlist)
-            domain = Recon(args.domain, args.timeout, args.silent).start()
-            domain += Bruteforce(args.domain, args.wordlist).start()
-            domain = list(OrderedDict.fromkeys(domain))
-        elif args.recon:
-            domain = Recon(args.domain, args.timeout, args.silent).start()
-        elif args.bruteforce:
-            domain = Bruteforce(args.domain, args.wordlist).start()
-
-        results = KNOCKPY(domain, args.dns, args.useragent, args.timeout, args.silent)
-        
-        if args.recon or args.bruteforce:
-            save(args.domain, results, args.folder)
-        
-        output(results, args.json)
+            subdomain_strings.add(str(sub))
     
-    if args.file:
-        with open(args.file,'r') as f:
-            domains = f.read().splitlines()
-        results = KNOCKPY(domains, args.dns, args.useragent, args.timeout, args.silent)
-        output(results, args.json)
+    for sub in subdomain_strings:
+        if not sub:  # Skip empty strings
+            continue
+        # Thêm tiền tố
+        for pre in prefixes:
+            alterations.add(f"{pre}-{sub}")
+            alterations.add(f"{pre}{sub}")
+        # Thêm hậu tố
+        for suf in suffixes:
+            alterations.add(f"{sub}-{suf}")
+            alterations.add(f"{sub}{suf}")
+        # Thay thế ký tự
+        for i, c in enumerate(sub):
+            if c in replaces:
+                altered = sub[:i] + replaces[c] + sub[i+1:]
+                alterations.add(altered)
+        # Thêm số cuối
+        for n in range(0, 3):
+            alterations.add(f"{sub}{n}")
+        # Thêm từ ngoài nếu có
+        if extra_words:
+            for w in extra_words:
+                alterations.add(f"{w}-{sub}")
+                alterations.add(f"{sub}-{w}")
+    # Loại bỏ subdomain gốc
+    alterations.difference_update(subdomain_strings)
+    return list(alterations)
 
-
-if __name__ == "__main__":
+async def get_subdomains_advanced(domain, wordlist=None, extra_words=None, max_html_pages=5, timeout=5):
+    """
+    Pipeline tối ưu: chỉ scan và trả về danh sách subdomain thô (không enrich toàn bộ).
+    Trả về dict kết quả chi tiết các nguồn, tổng hợp unique subdomain.
+    """
+    results = {"domain": domain}
     try:
-        main()
-    except KeyboardInterrupt:
-        print("\nInterrupted")
-        try:
-            sys.exit(0)
-        except SystemExit:
-            os._exit(0)
+        # 1. Recon + bruteforce (TẮT bruteforce)
+        base_subs = set(get_subdomains(domain, recon=True, bruteforce=False, wordlist=wordlist, timeout=timeout))
+        logger.info(f"[knockpy] Base subdomains ({len(base_subs)}): {list(base_subs)}")
+        results["base_subdomains"] = list(base_subs)
+        # 2. DNS records nâng cao
+        dns_records, dns_subs = await fetch_dns_records(domain, timeout=timeout)
+        logger.info(f"[knockpy] DNS subdomains ({len(dns_subs)}): {dns_subs}")
+        results["dns_records"] = dns_records
+        results["dns_subdomains"] = dns_subs
+        # 3. Crawl HTML
+        html_subs = await crawl_html_for_subdomains(domain, max_pages=max_html_pages, timeout=timeout)
+        logger.info(f"[knockpy] HTML subdomains ({len(html_subs)}): {html_subs}")
+        results["html_subdomains"] = html_subs
+        # 4. Brave Search (if API key available)
+        brave_subs = []
+        API_KEY_BRAVE = os.getenv("API_KEY_BRAVE")
+        if API_KEY_BRAVE:
+            try:
+                brave_subs = brave_search_subdomains(domain, API_KEY_BRAVE)
+                logger.info(f"[knockpy] Brave Search subdomains ({len(brave_subs)}): {brave_subs}")
+                results["brave_search_subdomains"] = brave_subs
+            except Exception as e:
+                logger.warning(f"[knockpy] Brave Search failed: {e}")
+        # 5. Alteration search
+        all_for_alter = base_subs | set(dns_subs) | set(html_subs) | set(brave_subs)
+        alter_subs = generate_alterations(all_for_alter, extra_words=extra_words)
+        logger.info(f"[knockpy] Alteration subdomains ({len(alter_subs)}): {alter_subs}")
+        results["alteration_subdomains"] = alter_subs
+        # 6. Tổng hợp tất cả subdomain unique với thông tin nguồn
+        all_subs_with_source = []
+        
+        # Base subdomains (recon tools)
+        for sub in base_subs:
+            all_subs_with_source.append({"subdomain": sub, "source": "recon"})
+        
+        # DNS subdomains
+        for sub in dns_subs:
+            if sub not in base_subs:
+                all_subs_with_source.append({"subdomain": sub, "source": "dns"})
+        
+        # HTML subdomains
+        for sub in html_subs:
+            if sub not in base_subs and sub not in dns_subs:
+                all_subs_with_source.append({"subdomain": sub, "source": "html"})
+        
+        # Brave Search subdomains (SURFACE)
+        for sub in brave_subs:
+            if sub not in base_subs and sub not in dns_subs and sub not in html_subs:
+                all_subs_with_source.append({"subdomain": sub, "source": "search"})
+        
+        # Alteration subdomains
+        for sub in alter_subs:
+            if sub not in base_subs and sub not in dns_subs and sub not in html_subs and sub not in brave_subs:
+                all_subs_with_source.append({"subdomain": sub, "source": "alteration"})
+        
+        results["all_subdomains"] = all_subs_with_source
+    except Exception as e:
+        logger.error(f"[knockpy] Pipeline error: {e}")
+    return results

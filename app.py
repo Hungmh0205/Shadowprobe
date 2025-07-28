@@ -18,6 +18,10 @@ from pathlib import Path
 import tempfile
 import os
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 # Import ShadowProbe components
 from core.models import ScanResult, ScanType, Service, HostInfo
 from scanner.port_scanner import PortScanner
@@ -31,9 +35,13 @@ from core.db_sqlite import Website
 # Thay thế import SubdomainScanner
 # from scanner.Subdomain.engine import SubdomainScanner
 
+from scanner.knock import knockpy
+import asyncio
+
 from scanner.knock.knockpy import KNOCKPY
 from scanner.knock.knockpy import scan_subdomains_cli
 from core.async_scan_manager import get_scan_manager, start_scan as async_start_scan, get_scan_status as async_get_scan_status
+from scanner.knock.knockpy import get_subdomains_advanced
 
 app = Flask(__name__)
 app.secret_key = 'shadowprobe_web_secret_key_2024'
@@ -78,9 +86,13 @@ def is_domain(target):
     ip_pattern = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
     return not re.match(ip_pattern, target)
 
+# Sửa to_subdomain_entry_list để nhận tuple (subdomain, valid)
 def to_subdomain_entry_list(subdomains, http_alive):
     result = []
     for s in subdomains or []:
+        if isinstance(s, tuple) and len(s) == 2:
+            sub, valid = s
+            result.append({"subdomain": sub, "valid": valid})
         # Nếu là string dạng dict, parse lại thành dict
         if isinstance(s, str) and s.strip().startswith('{') and s.strip().endswith('}'):
             try:
@@ -346,35 +358,43 @@ def run_scan(scan_id, target, website_id=None):
         scan_status[scan_id]['message'] = 'Scanning for subdomains...'
         scan_status[scan_id]['progress'] = 70
         subdomains = []
-        
+        subdomain_details = {}
         if is_domain(target):
-            logger.info(f"Starting subdomain scan for domain: {target}")
+            logger.info(f"Starting advanced subdomain scan for domain: {target}")
             try:
-                # Use subdomain_scan directly
-                result = KNOCKPY(target, recon=True, bruteforce=False, threads=8)
-                if isinstance(result, list):
-                    subdomains = result
-                elif isinstance(result, dict):
-                    subdomains = result.get('subdomains', [])
-                else:
-                    subdomains = []
-                logger.info(f"Found {len(subdomains)} subdomains: {subdomains}")
-                # --- ENRICH SUBDOMAINS ---
-                from scanner.knock.knockpy import HttpStatus
-                enriched_subdomains = []
-                for sub in subdomains:
-                    try:
-                        enriched = HttpStatus(sub).scan()
-                        if not enriched:
-                            enriched = {"domain": sub, "ip": None, "http": None, "https": None, "cert": None}
-                        enriched_subdomains.append(enriched)
-                    except Exception as e:
-                        logger.error(f"Enrich subdomain {sub} failed: {e}")
-                        enriched_subdomains.append({"domain": sub, "ip": None, "http": None, "https": None, "cert": None})
-                subdomains = enriched_subdomains
+                subdomain_details = asyncio.run(get_subdomains_advanced(target))
+                all_subdomains = subdomain_details.get('all_subdomains', [])
+                logger.info(f"Advanced scan found {len(all_subdomains)} subdomains: {all_subdomains}")
+                
+                # Extract subdomain names from dictionaries
+                subdomain_names = []
+                for sd in all_subdomains:
+                    if isinstance(sd, dict):
+                        subdomain_names.append(sd.get('subdomain', ''))
+                    else:
+                        subdomain_names.append(str(sd))
+                
+                import aiodns
+                import asyncio as _asyncio
+                async def get_dns_valid_map(subdomains):
+                    resolver = aiodns.DNSResolver()
+                    async def resolve_one(sd):
+                        try:
+                            await resolver.gethostbyname(sd, socket.AF_INET)
+                            return sd, True
+                        except Exception:
+                            return sd, False
+                    tasks = [_asyncio.create_task(resolve_one(sd)) for sd in subdomains]
+                    results = await _asyncio.gather(*tasks)
+                    return dict(results)
+                dns_valid_map = _asyncio.run(get_dns_valid_map(subdomain_names))
+                # Truyền vào to_subdomain_entry_list
+                subdomains = [(sd, dns_valid_map.get(sd, False)) for sd in subdomain_names]
+                logger.info(f"DNS valid map: {dns_valid_map}")
             except Exception as e:
-                logger.error(f"Subdomain scan failed: {e}")
+                logger.error(f"Advanced subdomain scan failed: {e}")
                 subdomains = []
+                subdomain_details = {}
         else:
             logger.info(f"Skipping subdomain scan for IP target: {target}")
         
@@ -567,6 +587,28 @@ def get_scan_results_endpoint(scan_id):
                         })
                 results['subdomains'] = filtered_subdomains
         logger.info(f"Successfully prepared results for scan {scan_id}")
+        
+        # Get scan info from database
+        try:
+            from core.db_sqlite import get_scan_by_id
+            scan_info = get_scan_by_id(scan_id)
+            if scan_info:
+                return jsonify({
+                    'scan_info': {
+                        'scan_id': scan_info.scan_id,
+                        'target': scan_info.target,
+                        'scan_type': scan_info.scan_type,
+                        'status': scan_info.status,
+                        'start_time': scan_info.start_time.isoformat() if scan_info.start_time else None,
+                        'end_time': scan_info.end_time.isoformat() if scan_info.end_time else None,
+                        'duration': scan_info.duration
+                    },
+                    'results': results
+                })
+        except Exception as e:
+            logger.warning(f"Could not get scan info for {scan_id}: {e}")
+        
+        # Fallback to just results if scan_info not available
         return jsonify(results)
     except Exception as e:
         logger.error(f"Error getting scan results for {scan_id}: {e}")
@@ -1167,34 +1209,46 @@ def get_website_scans(website_id):
 def get_website_latest_scan(website_id):
     """Get the latest scan result for a website"""
     try:
-        from core.db_sqlite import get_latest_scan_by_website, get_scan_results
-        latest_scan = get_latest_scan_by_website(website_id)
+        from core.db_sqlite import get_scan_results, get_scans_by_website
+        scans = get_scans_by_website(website_id)
+        if not scans:
+            return jsonify({'results': None, 'error': 'No scan found'})
+        latest_scan = scans[0] if scans else None
         if not latest_scan:
-            return jsonify({'error': 'No scan found for this website'}), 404
-        # Get the scan results
+            return jsonify({'results': None, 'error': 'No scan found'})
         results = get_scan_results(latest_scan.scan_id)
         if not results:
-            return jsonify({'error': 'Scan results not found'}), 404
-        # --- FIX: Ensure subdomains is always a list of dicts ---
+            return jsonify({'results': None, 'error': 'No scan found'})
+        # --- FIX: Ensure subdomains is always a list of dicts with proper validation ---
         if 'subdomains' in results and results['subdomains']:
             filtered_subdomains = []
             for s in results['subdomains']:
                 if isinstance(s, dict):
-                    # Keep the original structure but ensure subdomain field exists
+                    # Determine validity based on IP address
+                    subdomain_name = s.get('subdomain') or s.get('domain')
+                    ip_address = s.get('ip')
+                    
+                    # A subdomain is valid if it has a valid IP address
+                    is_valid = bool(ip_address and (
+                        (isinstance(ip_address, list) and len(ip_address) > 0) or 
+                        (isinstance(ip_address, str) and ip_address.strip())
+                    ))
+                    
                     subdomain_entry = {
-                        'subdomain': s.get('subdomain') or s.get('domain'),
-                        'valid': s.get('valid', True),
-                        'ip': s.get('ip'),
+                        'subdomain': subdomain_name,
+                        'valid': is_valid,
+                        'ip': ip_address,
                         'http': s.get('http'),
                         'https': s.get('https'),
                         'cert': s.get('cert'),
                     }
                     filtered_subdomains.append(subdomain_entry)
                 elif isinstance(s, str):
-                    # Handle string subdomains
+                    # For string subdomains, we can't determine validity without IP
+                    # So we'll mark as invalid by default (will be updated by DNS check)
                     filtered_subdomains.append({
                         'subdomain': s,
-                        'valid': True
+                        'valid': False  # Default to invalid for string subdomains
                     })
             results['subdomains'] = filtered_subdomains
         return jsonify({
@@ -1278,15 +1332,20 @@ def scan_subdomains_api():
     if not data or 'domain' not in data:
         return jsonify({'error': 'Missing domain'}), 400
     domain = data['domain']
-    bruteforce = data.get('bruteforce', True)
+    bruteforce = data.get('bruteforce', False)  # Tắt bruteforce mặc định
     wordlist = data.get('wordlist', None)
     try:
-        subdomain_infos = KNOCKPY(domain, recon=True, bruteforce=bruteforce, wordlist=wordlist)
+        logger.info(f"Starting async subdomain scan for {domain}")
+        subs = knockpy.get_subdomains(domain, recon=True, bruteforce=bruteforce, wordlist=wordlist)
+        enriched = asyncio.run(knockpy.enrich_subdomains_async(subs))
+        live = knockpy.filter_live_domains(enriched)
+        logger.info(f"Found {len(live)} live subdomains for {domain}")
         return jsonify({
             "domain": domain,
-            "subdomains": subdomain_infos
+            "subdomains": live
         })
     except Exception as e:
+        logger.error(f"Subdomain scan failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 from flask import Blueprint
@@ -1296,18 +1355,79 @@ bp_subdomain = Blueprint("subdomain", __name__)
 def scan_subdomain():
     data = request.get_json()
     domain = data.get("domain")
-    bruteforce = data.get('bruteforce', True)
+    bruteforce = data.get('bruteforce', False)  # Tắt bruteforce mặc định
     wordlist = data.get('wordlist', None)
     if not domain:
         return jsonify({"error": "Missing domain"}), 400
     try:
-        subdomain_infos = KNOCKPY(domain, recon=True, bruteforce=bruteforce, wordlist=wordlist)
+        logger.info(f"Starting async subdomain scan for {domain}")
+        subs = knockpy.get_subdomains(domain, recon=True, bruteforce=bruteforce, wordlist=wordlist)
+        enriched = asyncio.run(knockpy.enrich_subdomains_async(subs))
+        live = knockpy.filter_live_domains(enriched)
+        logger.info(f"Found {len(live)} live subdomains for {domain}")
         return jsonify({
             "domain": domain,
-            "subdomains": subdomain_infos
+            "subdomains": live
         })
     except Exception as e:
+        logger.error(f"Subdomain scan failed: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/scan_subdomains_advanced', methods=['POST'])
+def scan_subdomains_advanced_api():
+    data = request.get_json()
+    if not data or 'domain' not in data:
+        return jsonify({'error': 'Missing domain'}), 400
+    domain = data['domain']
+    wordlist = data.get('wordlist', None)
+    extra_words = data.get('extra_words', None)
+    try:
+        logger.info(f"Starting advanced subdomain scan for {domain}")
+        from scanner.knock.knockpy import get_subdomains_advanced
+        results = asyncio.run(get_subdomains_advanced(domain, wordlist=wordlist, extra_words=extra_words))
+        logger.info(f"Advanced scan for {domain} found {len(results.get('live_subdomains', []))} live subdomains")
+        return jsonify(results)
+    except Exception as e:
+        logger.error(f"Advanced subdomain scan failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/recon_subdomain', methods=['POST'])
+def recon_subdomain_api():
+    data = request.get_json()
+    subdomain = data.get('subdomain')
+    if not subdomain:
+        return jsonify({'error': 'Missing subdomain'}), 400
+    try:
+        import asyncio
+        from scanner.knock.knockpy import enrich_one_subdomain
+        result = asyncio.run(enrich_one_subdomain(subdomain))
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/brave_search_subdomains', methods=['POST'])
+def brave_search_subdomains_api():
+    data = request.get_json()
+    domain = data.get('domain')
+    if not domain:
+        return jsonify({'error': 'Missing domain'}), 400
+    
+    api_key = os.getenv("API_KEY_BRAVE")
+    if not api_key:
+        return jsonify({'error': 'Brave Search API key not configured'}), 400
+    
+    try:
+        from scanner.knock.knockpy import brave_search_subdomains
+        subdomains = brave_search_subdomains(domain, api_key)
+        logger.info(f"Brave Search found {len(subdomains)} subdomains for {domain}")
+        return jsonify({
+            "domain": domain,
+            "subdomains": subdomains,
+            "count": len(subdomains)
+        })
+    except Exception as e:
+        logger.error(f"Brave Search failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 

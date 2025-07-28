@@ -124,7 +124,7 @@ def get_scan_by_scan_type(scan_type):
     return scan
 
 def save_scan_results(scan_id, results_data, website_id=None):
-    """Save scan results to database"""
+    """Save scan results to database (upsert)"""
     db = SessionLocal()
     try:
         # Convert results to JSON string
@@ -132,13 +132,17 @@ def save_scan_results(scan_id, results_data, website_id=None):
             results_json = json.dumps(results_data, default=str)
         else:
             results_json = json.dumps(results_data, default=str)
-        
-        scan_result = ScanResults(
-            scan_id=scan_id,
-            results_data=results_json,
-            website_id=website_id
-        )
-        db.add(scan_result)
+        scan_result = db.query(ScanResults).filter(ScanResults.scan_id == scan_id).first()
+        if scan_result:
+            scan_result.results_data = results_json
+            scan_result.website_id = website_id
+        else:
+            scan_result = ScanResults(
+                scan_id=scan_id,
+                results_data=results_json,
+                website_id=website_id
+            )
+            db.add(scan_result)
         db.commit()
     except Exception as e:
         db.rollback()
@@ -245,3 +249,5 @@ def get_scan_comparison(website_id, limit=2):
         return scans
     finally:
         db.close()
+
+
