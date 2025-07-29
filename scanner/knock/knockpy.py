@@ -819,25 +819,40 @@ def get_subdomains(domain, recon=True, bruteforce=False, wordlist=None, timeout=
     Thu thập subdomain từ recon và bruteforce.
     Trả về list subdomain (chuỗi).
     """
+    logger.info(f"🔍 Starting subdomain discovery for {domain}")
     subdomains = set()
+    
     if recon:
-        subdomains.update(Recon(domain, timeout, silent).start())
+        logger.info(f"📡 Running passive reconnaissance for {domain}")
+        recon_results = Recon(domain, timeout, silent).start()
+        subdomains.update(recon_results)
+        logger.info(f"✅ Passive recon found {len(recon_results)} subdomains")
+    
     if bruteforce:
-        subdomains.update(Bruteforce(domain, wordlist).start())
-    return list(subdomains)
+        logger.info(f"🔨 Running bruteforce for {domain}")
+        bruteforce_results = Bruteforce(domain, wordlist).start()
+        subdomains.update(bruteforce_results)
+        logger.info(f"✅ Bruteforce found {len(bruteforce_results)} subdomains")
+    
+    total_subdomains = list(subdomains)
+    logger.info(f"🎯 Total subdomains found for {domain}: {len(total_subdomains)}")
+    return total_subdomains
 
 async def enrich_subdomains_async(subdomains, timeout=8, max_concurrent=5):
     """
     Nhận list subdomain, trả về list dict đã enrich (DNS, HTTP, HTTPS).
     Cải thiện: timeout dài hơn, concurrent thấp hơn, sử dụng enrich_one_subdomain.
     """
+    logger.info(f"🔧 Starting enrichment for {len(subdomains)} subdomains")
     sem = asyncio.Semaphore(max_concurrent)
     
     async def sem_enrich(sub):
         async with sem:
             try:
+                logger.debug(f"🔍 Enriching subdomain: {sub}")
                 return await enrich_one_subdomain(sub, timeout=timeout)
             except Exception as e:
+                logger.warning(f"❌ Enrichment failed for {sub}: {e}")
                 return {
                     "subdomain": sub,
                     "error": f"Enrich failed: {str(e)}",
@@ -854,7 +869,7 @@ async def enrich_subdomains_async(subdomains, timeout=8, max_concurrent=5):
     # Lọc subdomain có IP
     valid_results = [r for r in results if r.get("ip")]
     
-    logger.info(f"Found {len(valid_results)} subdomains with IP out of {len(subdomains)}")
+    logger.info(f"✅ Enrichment completed: {len(valid_results)} valid subdomains out of {len(subdomains)}")
     
     return valid_results
 

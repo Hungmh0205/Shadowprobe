@@ -18,7 +18,14 @@ class HostResolver:
             import asyncio
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         
-        self.resolver = aiodns.DNSResolver()
+        # Fix aiodns deprecation warning by explicitly setting event loop
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        self.resolver = aiodns.DNSResolver(loop=loop)
         self.max_concurrency = max_concurrency
         self.max_retries = 3  # Thêm retry mechanism
         self.timeout = 10.0  # Tăng timeout

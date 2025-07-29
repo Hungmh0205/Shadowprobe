@@ -14,8 +14,15 @@ from scanner.knock.knockpy import KNOCKPY as subdomain_scan, enrich_subdomains_a
 
 logger = logging.getLogger(__name__)
 
+# Global singleton instance
+_scan_manager_instance = None
+
 class AsyncScanManager:
     def __init__(self):
+        # Singleton pattern - chỉ tạo instance một lần
+        if _scan_manager_instance is not None:
+            raise Exception("AsyncScanManager is a singleton. Use get_scan_manager() instead.")
+        
         self.active_scans: Dict[str, Dict[str, Any]] = {}
         self.scan_lock = asyncio.Lock()
         
@@ -34,6 +41,8 @@ class AsyncScanManager:
         # Initialize scanners với configuration tốt hơn
         self.port_scanner = AsyncPortScanner(max_concurrent=30)  # Giảm concurrency
         self.host_resolver = HostResolver(max_concurrency=15)  # Giảm concurrency
+        
+        logger.info("AsyncScanManager initialized (singleton)")
 
     async def start_scan(self, target: str, scan_type: str = "full") -> str:
         """Start a new scan with improved error handling"""
@@ -302,15 +311,12 @@ class AsyncScanManager:
         
         logger.info(f"Cleared {len(scans_to_remove)} old scans from memory")
 
-# Global scan manager instance
-_scan_manager: Optional[AsyncScanManager] = None
-
 def get_scan_manager() -> AsyncScanManager:
     """Get or create global scan manager instance"""
-    global _scan_manager
-    if _scan_manager is None:
-        _scan_manager = AsyncScanManager()
-    return _scan_manager
+    global _scan_manager_instance
+    if _scan_manager_instance is None:
+        _scan_manager_instance = AsyncScanManager()
+    return _scan_manager_instance
 
 async def start_scan(target: str, scan_type: str = "full") -> str:
     """Convenience function to start a scan"""

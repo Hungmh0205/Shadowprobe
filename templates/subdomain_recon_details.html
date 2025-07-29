@@ -5,14 +5,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reconnaissance Details - {{ subdomain }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(5px);
+        }
+        
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            color: white;
+            font-size: 18px;
+            font-weight: 500;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .loading-progress {
+            width: 300px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            margin-top: 15px;
+            overflow: hidden;
+        }
+        
+        .loading-progress-bar {
+            height: 100%;
+            background: #3b82f6;
+            border-radius: 2px;
+            animation: progress 2s ease-in-out infinite;
+        }
+        
+        @keyframes progress {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+    </style>
 </head>
 <body class="bg-gray-50">
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="text-center">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Analyzing subdomain...</div>
+            <div class="loading-progress">
+                <div class="loading-progress-bar"></div>
+            </div>
+            <div class="text-white text-sm mt-4 opacity-75">
+                Please wait, do not navigate away
+            </div>
+        </div>
+    </div>
+
     <div class="min-h-screen p-4 md:p-8">
         <nav class="mb-6">
             <div class="flex items-center gap-2 text-sm text-gray-600">
                 <a href="/" class="hover:underline">Home</a>
-                <span>/</span>
-                <a href="/website/{{ subdomain.split('.')[-2] }}" class="hover:underline">Back to Website</a>
                 <span>/</span>
                 <span class="font-semibold">{{ subdomain }}</span>
             </div>
@@ -21,12 +92,23 @@
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <main class="lg:col-span-8 space-y-6">
                 <section class="bg-white rounded-xl p-6 shadow-sm">
-                    <h1 class="text-3xl font-bold text-gray-900">{{ subdomain }}</h1>
-                    <div class="mt-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ 'bg-green-100 text-green-800' if status=='active' else 'bg-gray-200 text-gray-500' }}">{{ status|capitalize }}</div>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h1 class="text-3xl font-bold text-gray-900">{{ subdomain }}</h1>
+                            <div class="mt-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ 'bg-green-100 text-green-800' if status=='active' else 'bg-gray-200 text-gray-500' }}">{{ status|capitalize }}</div>
+                        </div>
+                        <button onclick="refreshEnrichment()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            Analyze
+                        </button>
+                    </div>
                 </section>
 
                 <section class="bg-white rounded-xl p-6 shadow-sm">
                     <h2 class="text-lg font-semibold mb-4">Geolocation Details</h2>
+                    {% if geo.country != 'N/A' %}
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="p-4 bg-gray-50 rounded-lg">
                             <div class="text-sm text-gray-600">Country</div>
@@ -45,10 +127,17 @@
                             <div class="font-medium">{{ geo.isp }}</div>
                         </div>
                     </div>
+                    {% else %}
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 text-lg mb-2">No geolocation data available</div>
+                        <div class="text-gray-500 text-sm">Click "Phân tích lại" to gather information</div>
+                    </div>
+                    {% endif %}
                 </section>
 
                 <section class="bg-white rounded-xl p-6 shadow-sm">
                     <h2 class="text-lg font-semibold mb-4">Open Ports</h2>
+                    {% if ports %}
                     <div class="overflow-x-auto">
                         <table class="w-full">
                             <thead>
@@ -69,28 +158,49 @@
                             </tbody>
                         </table>
                     </div>
+                    {% else %}
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 text-lg mb-2">No open ports data available</div>
+                        <div class="text-gray-500 text-sm">Click "Phân tích lại" to scan ports</div>
+                    </div>
+                    {% endif %}
                 </section>
 
                 <section class="bg-white rounded-xl p-6 shadow-sm">
                     <h2 class="text-lg font-semibold mb-4">Technologies Detected</h2>
+                    {% if technologies %}
                     <div class="flex flex-wrap gap-2">
                         {% for tech in technologies %}
                         <span class="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">{{ tech }}</span>
                         {% endfor %}
                     </div>
+                    {% else %}
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 text-lg mb-2">No technologies detected</div>
+                        <div class="text-gray-500 text-sm">Click "Phân tích lại" to detect technologies</div>
+                    </div>
+                    {% endif %}
                 </section>
 
                 <section class="bg-white rounded-xl p-6 shadow-sm">
                     <h2 class="text-lg font-semibold mb-4">Screenshot Preview</h2>
+                    {% if screenshot_url %}
                     <div class="aspect-video rounded-lg overflow-hidden bg-gray-100">
                         <img src="{{ screenshot_url }}" alt="Website Screenshot" class="w-full h-full object-cover">
                     </div>
+                    {% else %}
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 text-lg mb-2">No screenshot available</div>
+                        <div class="text-gray-500 text-sm">Click "Phân tích lại" to generate screenshot</div>
+                    </div>
+                    {% endif %}
                 </section>
             </main>
 
             <aside class="lg:col-span-4 space-y-6">
                 <section class="bg-white rounded-xl p-6 shadow-sm">
                     <h2 class="text-lg font-semibold mb-4">Hash Information</h2>
+                    {% if hash.md5 or hash.sha256 %}
                     <div class="space-y-3">
                         <div>
                             <div class="text-sm text-gray-600 mb-1">MD5</div>
@@ -101,10 +211,17 @@
                             <code class="block p-2 bg-gray-50 rounded text-sm font-mono">{{ hash.sha256 }}</code>
                         </div>
                     </div>
+                    {% else %}
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 text-lg mb-2">No hash information available</div>
+                        <div class="text-gray-500 text-sm">Click "Phân tích lại" to calculate hashes</div>
+                    </div>
+                    {% endif %}
                 </section>
 
                 <section class="bg-white rounded-xl p-6 shadow-sm">
                     <h2 class="text-lg font-semibold mb-4">WHOIS Details</h2>
+                    {% if whois.registrar != 'N/A' %}
                     <div class="space-y-3">
                         <div>
                             <div class="text-sm text-gray-600">Registrar</div>
@@ -119,18 +236,137 @@
                             <div class="font-medium">{{ whois.expiration_date }}</div>
                         </div>
                     </div>
+                    {% else %}
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 text-lg mb-2">No WHOIS information available</div>
+                        <div class="text-gray-500 text-sm">Click "Phân tích lại" to get WHOIS data</div>
+                    </div>
+                    {% endif %}
                 </section>
 
                 <section class="bg-white rounded-xl p-6 shadow-sm">
                     <h2 class="text-lg font-semibold mb-4">Reverse IP Domains</h2>
+                    {% if reverse_ip_domains %}
                     <div class="space-y-2">
                         {% for dom in reverse_ip_domains %}
                         <a href="/subdomain/{{ dom }}" class="block p-2 hover:bg-gray-50 rounded">{{ dom }}</a>
                         {% endfor %}
                     </div>
+                    {% else %}
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 text-lg mb-2">No reverse IP domains found</div>
+                        <div class="text-gray-500 text-sm">Click "Phân tích lại" to find reverse IP domains</div>
+                    </div>
+                    {% endif %}
                 </section>
             </aside>
         </div>
     </div>
+
+    <script>
+        // Loading overlay management
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        let isLoading = false;
+
+        // Show loading overlay
+        function showLoading() {
+            isLoading = true;
+            loadingOverlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden'; // Prevent scrolling
+        }
+
+        // Hide loading overlay
+        function hideLoading() {
+            isLoading = false;
+            loadingOverlay.style.display = 'none';
+            document.body.style.overflow = 'auto'; // Restore scrolling
+        }
+
+        // Block navigation during loading
+        function blockNavigation(event) {
+            if (isLoading) {
+                event.preventDefault();
+                event.stopPropagation();
+                return false;
+            }
+        }
+
+        // Add event listeners to block navigation
+        document.addEventListener('click', function(e) {
+            if (isLoading && e.target.tagName === 'A') {
+                e.preventDefault();
+                alert('Vui lòng chờ quá trình phân tích hoàn tất!');
+                return false;
+            }
+        });
+
+        // Block form submissions during loading
+        document.addEventListener('submit', function(e) {
+            if (isLoading) {
+                e.preventDefault();
+                alert('Vui lòng chờ quá trình phân tích hoàn tất!');
+                return false;
+            }
+        });
+
+        // Block browser back/forward during loading
+        window.addEventListener('beforeunload', function(e) {
+            if (isLoading) {
+                e.preventDefault();
+                e.returnValue = 'Quá trình phân tích đang diễn ra. Bạn có chắc muốn rời khỏi trang?';
+                return 'Quá trình phân tích đang diễn ra. Bạn có chắc muốn rời khỏi trang?';
+            }
+        });
+
+        // Auto-show loading when page loads (if this is a fresh enrich)
+        window.addEventListener('load', function() {
+            // Check if this is a fresh enrich by looking for loading parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('loading') === 'true') {
+                showLoading();
+                
+                // Simulate loading time (remove this in production)
+                setTimeout(() => {
+                    hideLoading();
+                    // Remove loading parameter from URL
+                    const newUrl = window.location.pathname + window.location.search.replace(/[?&]loading=true/, '');
+                    window.history.replaceState({}, '', newUrl);
+                }, 3000);
+            }
+        });
+
+        // Function to start enrichment process
+        function startEnrichment(subdomain) {
+            showLoading();
+            
+            // Make API call to enrich subdomain
+            fetch(`/api/recon_subdomain_details`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    subdomain: subdomain
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                // Navigate to subdomain page to show new data
+                window.location.href = `/subdomain/${subdomain}`;
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Enrichment failed:', error);
+                alert('Có lỗi xảy ra trong quá trình phân tích. Vui lòng thử lại!');
+            });
+        }
+
+        // Add refresh button functionality
+        function refreshEnrichment() {
+            const subdomain = '{{ subdomain }}';
+            startEnrichment(subdomain);
+        }
+    </script>
 </body>
 </html> 

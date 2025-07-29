@@ -3,6 +3,7 @@ import asyncio
 import socket # Added for fallback port scanning
 import ast
 
+# Windows-specific asyncio configuration
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.set_event_loop(asyncio.SelectorEventLoop())
@@ -32,16 +33,24 @@ from core.db_sqlite import save_scan_results, get_scan_results
 from core.db_sqlite import SessionLocal, ScanHistory
 from core.db_sqlite import add_website, get_all_websites, delete_website_by_id, update_website_by_id
 from core.db_sqlite import Website
+from core.db_sqlite import save_enrich_result, get_enrich_results_by_subdomain, get_enrich_results_by_website, get_latest_enrich_result, delete_enrich_result
 # Thay thế import SubdomainScanner
 # from scanner.Subdomain.engine import SubdomainScanner
 
-from scanner.knock import knockpy
+# Import knockpy with error handling
+try:
+    from scanner.knock import knockpy
+    from scanner.knock.knockpy import KNOCKPY, scan_subdomains_cli, get_subdomains_advanced
+    KNOCKPY_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Knockpy import failed: {e}")
+    KNOCKPY_AVAILABLE = False
+
 import asyncio
 
-from scanner.knock.knockpy import KNOCKPY
-from scanner.knock.knockpy import scan_subdomains_cli
 from core.async_scan_manager import get_scan_manager, start_scan as async_start_scan, get_scan_status as async_get_scan_status
-from scanner.knock.knockpy import get_subdomains_advanced
+from core.subdomain_enricher import enrich_subdomain_full
+from core.subdomain_enricher_async import enrich_subdomain_fast, enrich_subdomains_batch
 
 app = Flask(__name__)
 app.secret_key = 'shadowprobe_web_secret_key_2024'
@@ -53,9 +62,31 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize ShadowProbe components
-port_scanner = PortScanner()
-host_resolver = HostResolver()
-report_generator = ReportGenerator()
+try:
+    port_scanner = PortScanner()
+    logger.info("✅ PortScanner initialized successfully")
+except Exception as e:
+    logger.error(f"❌ PortScanner initialization failed: {e}")
+    port_scanner = None
+
+try:
+    host_resolver = HostResolver()
+    logger.info("✅ HostResolver initialized successfully")
+except Exception as e:
+    logger.error(f"❌ HostResolver initialization failed: {e}")
+    host_resolver = None
+
+try:
+    report_generator = ReportGenerator()
+    logger.info("✅ ReportGenerator initialized successfully")
+except Exception as e:
+    logger.error(f"❌ ReportGenerator initialization failed: {e}")
+    report_generator = None
+
+if KNOCKPY_AVAILABLE:
+    logger.info("✅ Knockpy module available")
+else:
+    logger.warning("⚠️ Knockpy module not available - subdomain scanning will be limited")
 
 # Global scan status
 scan_status = {}
@@ -1359,6 +1390,10 @@ def scan_subdomain():
     wordlist = data.get('wordlist', None)
     if not domain:
         return jsonify({"error": "Missing domain"}), 400
+    
+    if not KNOCKPY_AVAILABLE:
+        return jsonify({"error": "Knockpy module not available"}), 500
+    
     try:
         logger.info(f"Starting async subdomain scan for {domain}")
         subs = knockpy.get_subdomains(domain, recon=True, bruteforce=bruteforce, wordlist=wordlist)
@@ -1381,6 +1416,10 @@ def scan_subdomains_advanced_api():
     domain = data['domain']
     wordlist = data.get('wordlist', None)
     extra_words = data.get('extra_words', None)
+    
+    if not KNOCKPY_AVAILABLE:
+        return jsonify({'error': 'Knockpy module not available'}), 500
+    
     try:
         logger.info(f"Starting advanced subdomain scan for {domain}")
         from scanner.knock.knockpy import get_subdomains_advanced
@@ -1397,12 +1436,194 @@ def recon_subdomain_api():
     subdomain = data.get('subdomain')
     if not subdomain:
         return jsonify({'error': 'Missing subdomain'}), 400
+    
+    if not KNOCKPY_AVAILABLE:
+        return jsonify({'error': 'Knockpy module not available'}), 500
+    
     try:
         import asyncio
         from scanner.knock.knockpy import enrich_one_subdomain
         result = asyncio.run(enrich_one_subdomain(subdomain))
         return jsonify(result)
     except Exception as e:
+        logger.error(f"Recon subdomain failed for {subdomain}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/recon_subdomain_details', methods=['GET', 'POST'])
+def api_recon_subdomain_details():
+    if request.method == 'POST':
+        data = request.get_json()
+        subdomain = data.get('subdomain')
+        website_id = data.get('website_id')  # Optional website_id
+    else:
+        subdomain = request.args.get('subdomain')
+        website_id = request.args.get('website_id')
+    
+    if not subdomain:
+        return jsonify({'error': 'Missing subdomain'}), 400
+    
+    try:
+        # Use fast async enrichment
+        result = asyncio.run(enrich_subdomain_fast(subdomain))
+        
+        # Check for blocked access
+        http_error = result.get('http', {}).get('error', '')
+        https_error = result.get('https', {}).get('error', '')
+        
+        if '403' in http_error or '403' in https_error:
+            logger.warning(f"Access blocked for {subdomain}: HTTP={http_error}, HTTPS={https_error}")
+            # Still return result but with warning
+            result['blocked_access'] = True
+            result['blocked_reason'] = 'Server returned 403 Forbidden'
+        
+        # Save to database
+        try:
+            enrich_id = save_enrich_result(result, website_id)
+            result['enrich_id'] = enrich_id
+            logger.info(f"✅ Enrich result saved to database with ID: {enrich_id}")
+        except Exception as db_error:
+            logger.warning(f"⚠️ Failed to save enrich result to database: {db_error}")
+            result['enrich_id'] = None
+        
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Enrichment failed for {subdomain}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/enrich_results/<subdomain>', methods=['GET'])
+def get_enrich_history(subdomain):
+    """Get enrich history for a subdomain"""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        results = get_enrich_results_by_subdomain(subdomain, limit)
+        
+        enrich_history = []
+        for result in results:
+            enrich_history.append({
+                'id': result.id,
+                'subdomain': result.subdomain,
+                'ip_address': result.ip_address,
+                'status': result.status,
+                'geo': {
+                    'country': result.geo_country,
+                    'city': result.geo_city,
+                    'asn': result.geo_asn,
+                    'isp': result.geo_isp
+                },
+                'ports': json.loads(result.open_ports) if result.open_ports else [],
+                'technologies': json.loads(result.technologies) if result.technologies else [],
+                'screenshot_url': result.screenshot_url,
+                'screenshot_alt1': result.screenshot_alt1,
+                'screenshot_alt2': result.screenshot_alt2,
+                'whois': {
+                    'registrar': result.whois_registrar,
+                    'creation_date': result.whois_creation_date,
+                    'expiration_date': result.whois_expiration_date,
+                    'status': result.whois_status
+                },
+                'reverse_ip_domains': json.loads(result.reverse_ip_domains) if result.reverse_ip_domains else [],
+                'http_status': result.http_status,
+                'https_status': result.https_status,
+                'hash': {
+                    'md5': result.hash_md5,
+                    'sha256': result.hash_sha256
+                },
+                'security_headers': json.loads(result.security_headers) if result.security_headers else {},
+                'enrich_time': result.enrich_time.isoformat() if result.enrich_time else None,
+                'website_id': result.website_id
+            })
+        
+        return jsonify({
+            'subdomain': subdomain,
+            'history': enrich_history,
+            'total': len(enrich_history)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting enrich history for {subdomain}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/enrich_results/website/<int:website_id>', methods=['GET'])
+def get_website_enrich_results(website_id):
+    """Get enrich results for a website"""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        results = get_enrich_results_by_website(website_id, limit)
+        
+        enrich_results = []
+        for result in results:
+            enrich_results.append({
+                'id': result.id,
+                'subdomain': result.subdomain,
+                'ip_address': result.ip_address,
+                'status': result.status,
+                'geo': {
+                    'country': result.geo_country,
+                    'city': result.geo_city,
+                    'asn': result.geo_asn,
+                    'isp': result.geo_isp
+                },
+                'ports': json.loads(result.open_ports) if result.open_ports else [],
+                'technologies': json.loads(result.technologies) if result.technologies else [],
+                'screenshot_url': result.screenshot_url,
+                'whois': {
+                    'registrar': result.whois_registrar,
+                    'creation_date': result.whois_creation_date,
+                    'expiration_date': result.whois_expiration_date,
+                    'status': result.whois_status
+                },
+                'enrich_time': result.enrich_time.isoformat() if result.enrich_time else None
+            })
+        
+        return jsonify({
+            'website_id': website_id,
+            'results': enrich_results,
+            'total': len(enrich_results)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting enrich results for website {website_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/enrich_results/<int:result_id>', methods=['DELETE'])
+def delete_enrich_result_api(result_id):
+    """Delete an enrich result"""
+    try:
+        success = delete_enrich_result(result_id)
+        if success:
+            return jsonify({'message': 'Enrich result deleted successfully'})
+        else:
+            return jsonify({'error': 'Enrich result not found'}), 404
+    except Exception as e:
+        logger.error(f"Error deleting enrich result {result_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/recon_subdomain_batch', methods=['POST'])
+def api_recon_subdomain_batch():
+    """Fast batch enrichment for multiple subdomains"""
+    data = request.get_json()
+    subdomains = data.get('subdomains', [])
+    max_concurrent = data.get('max_concurrent', 10)
+    timeout = data.get('timeout', 30)
+    
+    if not subdomains or not isinstance(subdomains, list):
+        return jsonify({'error': 'Missing or invalid subdomains list'}), 400
+    
+    if len(subdomains) > 50:  # Limit to prevent abuse
+        return jsonify({'error': 'Too many subdomains (max 50)'}), 400
+    
+    try:
+        logger.info(f"🚀 Starting batch enrichment for {len(subdomains)} subdomains")
+        results = asyncio.run(enrich_subdomains_batch(subdomains, max_concurrent, timeout))
+        
+        return jsonify({
+            'subdomains': results,
+            'total_processed': len(results),
+            'total_requested': len(subdomains),
+            'success_rate': len(results) / len(subdomains) if subdomains else 0
+        })
+    except Exception as e:
+        logger.error(f"Batch enrichment failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/brave_search_subdomains', methods=['POST'])
@@ -1411,6 +1632,9 @@ def brave_search_subdomains_api():
     domain = data.get('domain')
     if not domain:
         return jsonify({'error': 'Missing domain'}), 400
+    
+    if not KNOCKPY_AVAILABLE:
+        return jsonify({'error': 'Knockpy module not available'}), 500
     
     api_key = os.getenv("API_KEY_BRAVE")
     if not api_key:
@@ -1428,6 +1652,69 @@ def brave_search_subdomains_api():
     except Exception as e:
         logger.error(f"Brave Search failed: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/subdomain/<subdomain>')
+def subdomain_details(subdomain):
+    try:
+        # Check if we have cached enrich data in database
+        from core.db_sqlite import get_latest_enrich_result
+        cached_result = get_latest_enrich_result(subdomain)
+        
+        if cached_result:
+            # Use cached data
+            result = {
+                'status': 'active' if cached_result.ip_address else 'inactive',
+                'ip': cached_result.ip_address or '',
+                'geo': {
+                    'country': cached_result.geo_country or 'N/A',
+                    'city': cached_result.geo_city or 'N/A', 
+                    'asn': cached_result.geo_asn or 'N/A',
+                    'isp': cached_result.geo_isp or 'N/A'
+                },
+                'ports': json.loads(cached_result.open_ports) if cached_result.open_ports else [],
+                'technologies': json.loads(cached_result.technologies) if cached_result.technologies else [],
+                'screenshot_url': cached_result.screenshot_url or '',
+                'hash': {
+                    'md5': cached_result.hash_md5 or '',
+                    'sha256': cached_result.hash_sha256 or ''
+                },
+                'whois': {
+                    'registrar': cached_result.whois_registrar or 'N/A',
+                    'creation_date': cached_result.whois_creation_date or 'N/A',
+                    'expiration_date': cached_result.whois_expiration_date or 'N/A',
+                    'status': cached_result.whois_status or 'N/A'
+                },
+                'reverse_ip_domains': json.loads(cached_result.reverse_ip_domains) if cached_result.reverse_ip_domains else []
+            }
+        else:
+            # No cached data, show empty state
+            result = {
+                'status': 'unknown',
+                'ip': '',
+                'geo': {'country': 'N/A', 'city': 'N/A', 'asn': 'N/A', 'isp': 'N/A'},
+                'ports': [],
+                'technologies': [],
+                'screenshot_url': '',
+                'hash': {'md5': '', 'sha256': ''},
+                'whois': {'registrar': 'N/A', 'creation_date': 'N/A', 'expiration_date': 'N/A', 'status': 'N/A'},
+                'reverse_ip_domains': []
+            }
+        
+        return render_template('subdomain_recon_details.html', 
+                            subdomain=subdomain,
+                            status=result.get('status', 'unknown'),
+                            ip=result.get('ip', ''),
+                            geo=result.get('geo', {}),
+                            ports=result.get('ports', []),
+                            technologies=result.get('technologies', []),
+                            screenshot_url=result.get('screenshot_url', ''),
+                            hash=result.get('hash', {}),
+                            whois=result.get('whois', {}),
+                            reverse_ip_domains=result.get('reverse_ip_domains', []),
+                            loading=False) # loading is now controlled by JS
+    except Exception as e:
+        logger.error(f"Error getting subdomain details for {subdomain}: {e}")
+        return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 

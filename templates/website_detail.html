@@ -610,7 +610,7 @@
               const sd = subdomains[idx];
               let domain = sd.subdomain || sd.domain || '';
               domain = extractDomain(domain);
-              // Chuyển hướng sang trang chi tiết subdomain
+              // Chuyển hướng sang trang chi tiết subdomain (không tự động enrich)
               window.location.href = `/subdomain/${domain}`;
             };
           });

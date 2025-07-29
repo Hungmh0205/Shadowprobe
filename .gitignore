@@ -50,7 +50,7 @@ yarn-error.log*
 reports/
 *.json
 *.xml
-*.html
+
 
 # IDE
 .vscode/
@@ -133,3 +133,13 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/ 
+
+# Allow templates folder even if *.html is ignored globally
+!templates/
+!templates/**/*.html
+
+# Ignore all test files
+
+test_*.py
+*test*
+*Test*

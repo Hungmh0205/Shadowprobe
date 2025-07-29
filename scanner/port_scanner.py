@@ -20,13 +20,42 @@ MIN_PORT = 1
 DEFAULT_CONCURRENT_SCANS = 50  # Giảm từ 100 xuống 50 để ổn định hơn
 MAX_RETRIES = 3  # Thêm retry mechanism
 
+# Global flag để track nmap initialization
+_nmap_initialized = False
+_nmap_path = None
+_nmap_available = False
+
 class AsyncPortScanner:
     def __init__(self, max_concurrent: int = DEFAULT_CONCURRENT_SCANS):
+        global _nmap_initialized, _nmap_path, _nmap_available
+        
         self.nm = None
         self.use_nmap = False
-        self.nmap_path = self._find_nmap()
-        self._init_nmap()
-        self.nmap_available = self.nmap_path is not None
+        
+        # Chỉ khởi tạo nmap một lần duy nhất
+        if not _nmap_initialized:
+            self.nmap_path = self._find_nmap()
+            self._init_nmap()
+            # Khởi tạo nmap_available sau khi _init_nmap() được gọi
+            self.nmap_available = self.nmap_path is not None
+            _nmap_path = self.nmap_path
+            _nmap_available = self.nmap_available
+            _nmap_initialized = True
+            logger.info("Nmap initialization completed (first time)")
+        else:
+            # Sử dụng giá trị đã được khởi tạo trước đó
+            self.nmap_path = _nmap_path
+            self.nmap_available = _nmap_available
+            if self.nmap_available:
+                try:
+                    import nmap
+                    self.nm = nmap.PortScanner()
+                    self.use_nmap = True
+                    logger.debug("Reusing existing nmap configuration")
+                except ImportError:
+                    self.use_nmap = True
+                    logger.debug("Reusing subprocess nmap configuration")
+        
         self.semaphore = asyncio.Semaphore(max_concurrent)
         
         # Thêm deterministic seed
@@ -290,8 +319,14 @@ class AsyncPortScanner:
                     
                     # Try to get banner
                     banner = await self._async_banner_grab(reader, writer, port)
-                    writer.close()
-                    await writer.wait_closed()
+                    
+                    # Close connection safely
+                    try:
+                        writer.close()
+                        await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
+                    except (asyncio.TimeoutError, ConnectionResetError, OSError):
+                        # Ignore connection close errors on Windows
+                        pass
                     
                     service_name = self._get_service_name(port)
                     server_name = None
@@ -309,6 +344,11 @@ class AsyncPortScanner:
                     
             except asyncio.TimeoutError:
                 logger.debug(f"Port {port} timeout on attempt {attempt + 1}")
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(1)
+                    continue
+            except (ConnectionResetError, OSError) as e:
+                logger.debug(f"Port {port} connection reset on attempt {attempt + 1}: {e}")
                 if attempt < MAX_RETRIES - 1:
                     await asyncio.sleep(1)
                     continue
@@ -454,7 +494,7 @@ class AsyncPortScanner:
 # Legacy compatibility class
 class PortScanner(AsyncPortScanner):
     def __init__(self):
-        super().__init__()
+        super().__init__(max_concurrent=DEFAULT_CONCURRENT_SCANS)
 
     def scan_ports_and_services(self, target: str) -> Tuple[List[int], List[Service]]:
         """Synchronous wrapper for async scan"""

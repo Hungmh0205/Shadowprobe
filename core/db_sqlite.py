@@ -1,6 +1,5 @@
 from sqlalchemy import Column, String, Float, DateTime, Text, create_engine, Integer
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 import json
 
@@ -33,6 +32,37 @@ class Website(Base):
     description = Column(Text)
     type = Column(String, nullable=False)
     added_time = Column(DateTime, default=datetime.utcnow)
+
+class EnrichResults(Base):
+    __tablename__ = 'enrich_results'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subdomain = Column(String, nullable=False)
+    ip_address = Column(String)
+    status = Column(String)
+    geo_country = Column(String)
+    geo_city = Column(String)
+    geo_asn = Column(String)
+    geo_isp = Column(String)
+    open_ports = Column(Text)  # JSON string
+    technologies = Column(Text)  # JSON string
+    screenshot_url = Column(String)
+    screenshot_alt1 = Column(String)
+    screenshot_alt2 = Column(String)
+    screenshot_alt3 = Column(String)
+    screenshot_alt4 = Column(String)
+    whois_registrar = Column(String)
+    whois_creation_date = Column(String)
+    whois_expiration_date = Column(String)
+    whois_status = Column(String)
+    reverse_ip_domains = Column(Text)  # JSON string
+    http_status = Column(String)
+    https_status = Column(String)
+    hash_md5 = Column(String)
+    hash_sha256 = Column(String)
+    security_headers = Column(Text)  # JSON string
+    enrich_time = Column(DateTime, default=datetime.utcnow)
+    website_id = Column(Integer, nullable=True)  # Liên kết với website
 
 DATABASE_URL = 'sqlite:///db/history.db'
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -247,6 +277,123 @@ def get_scan_comparison(website_id, limit=2):
     try:
         scans = db.query(ScanHistory).filter(ScanHistory.website_id == website_id).order_by(ScanHistory.start_time.desc()).limit(limit).all()
         return scans
+    finally:
+        db.close()
+
+def save_enrich_result(enrich_data, website_id=None):
+    """Save enrich result to database"""
+    db = SessionLocal()
+    try:
+        # Safely extract and convert data
+        def safe_str(value):
+            if value is None:
+                return ''
+            return str(value)
+        
+        def safe_json(value):
+            if value is None:
+                return '[]'
+            try:
+                return json.dumps(value)
+            except:
+                return '[]'
+        
+        # Extract data from enrich result with safe conversion
+        enrich_result = EnrichResults(
+            subdomain=safe_str(enrich_data.get('subdomain', '')),
+            ip_address=safe_str(enrich_data.get('ip', '')),
+            status=safe_str(enrich_data.get('status', '')),
+            geo_country=safe_str(enrich_data.get('geo', {}).get('country', '')),
+            geo_city=safe_str(enrich_data.get('geo', {}).get('city', '')),
+            geo_asn=safe_str(enrich_data.get('geo', {}).get('asn', '')),
+            geo_isp=safe_str(enrich_data.get('geo', {}).get('isp', '')),
+            open_ports=safe_json(enrich_data.get('ports', [])),
+            technologies=safe_json(enrich_data.get('technologies', [])),
+            screenshot_url=safe_str(enrich_data.get('screenshot_url', '')),
+            screenshot_alt1=safe_str(enrich_data.get('screenshot_alt1', '')),
+            screenshot_alt2=safe_str(enrich_data.get('screenshot_alt2', '')),
+            screenshot_alt3=safe_str(enrich_data.get('screenshot_alt3', '')),
+            screenshot_alt4=safe_str(enrich_data.get('screenshot_alt4', '')),
+            whois_registrar=safe_str(enrich_data.get('whois', {}).get('registrar', '')),
+            whois_creation_date=safe_str(enrich_data.get('whois', {}).get('creation_date', '')),
+            whois_expiration_date=safe_str(enrich_data.get('whois', {}).get('expiration_date', '')),
+            whois_status=safe_str(enrich_data.get('whois', {}).get('status', '')),
+            reverse_ip_domains=safe_json(enrich_data.get('reverse_ip_domains', [])),
+            http_status=safe_str(enrich_data.get('http', {}).get('status', '')),
+            https_status=safe_str(enrich_data.get('https', {}).get('status', '')),
+            hash_md5=safe_str(enrich_data.get('hash', {}).get('md5', '')),
+            hash_sha256=safe_str(enrich_data.get('hash', {}).get('sha256', '')),
+            security_headers=safe_json(enrich_data.get('security_headers', {})),
+            website_id=website_id
+        )
+        
+        db.add(enrich_result)
+        db.commit()
+        
+        return enrich_result.id
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Database error: {e}")
+        raise e
+    finally:
+        db.close()
+
+def get_enrich_results_by_subdomain(subdomain, limit=10):
+    """Get enrich results for a specific subdomain"""
+    db = SessionLocal()
+    try:
+        results = db.query(EnrichResults).filter(
+            EnrichResults.subdomain == subdomain
+        ).order_by(EnrichResults.enrich_time.desc()).limit(limit).all()
+        return results
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+def get_enrich_results_by_website(website_id, limit=50):
+    """Get enrich results for a specific website"""
+    db = SessionLocal()
+    try:
+        results = db.query(EnrichResults).filter(
+            EnrichResults.website_id == website_id
+        ).order_by(EnrichResults.enrich_time.desc()).limit(limit).all()
+        return results
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+def get_latest_enrich_result(subdomain):
+    """Get the latest enrich result for a subdomain"""
+    db = SessionLocal()
+    try:
+        result = db.query(EnrichResults).filter(
+            EnrichResults.subdomain == subdomain
+        ).order_by(EnrichResults.enrich_time.desc()).first()
+        return result
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+def delete_enrich_result(result_id):
+    """Delete an enrich result by ID"""
+    db = SessionLocal()
+    try:
+        result = db.query(EnrichResults).filter(EnrichResults.id == result_id).first()
+        if result:
+            db.delete(result)
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        db.rollback()
+        raise e
     finally:
         db.close()
 
