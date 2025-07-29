@@ -140,17 +140,19 @@ def enrich_subdomain_full(subdomain):
                     "country": data.get("country", "N/A"),
                     "city": data.get("city", "N/A"),
                     "asn": data.get("as"),
-                    "isp": data.get("isp", "N/A")
+                    "isp": data.get("isp", "N/A"),
+                    "lat": data.get("lat"),
+                    "lon": data.get("lon")
                 }
-                logger.info(f"✅ Geo info for {ip}: {geo.get('country')}, {geo.get('city')}")
+                logger.info(f"✅ Geo info for {ip}: {geo.get('country')}, {geo.get('city')}, lat={geo.get('lat')}, lon={geo.get('lon')}")
             else:
-                geo = {"country": "N/A", "city": "N/A", "asn": None, "isp": "N/A"}
+                geo = {"country": "N/A", "city": "N/A", "asn": None, "isp": "N/A", "lat": None, "lon": None}
                 logger.warning(f"❌ Geo API failed for {ip}: status {resp.status_code}")
         except Exception as e:
-            geo = {"country": "N/A", "city": "N/A", "asn": None, "isp": "N/A"}
+            geo = {"country": "N/A", "city": "N/A", "asn": None, "isp": "N/A", "lat": None, "lon": None}
             logger.warning(f"❌ Geo enrichment failed for {ip}: {e}")
     else:
-        geo = {"country": "N/A", "city": "N/A", "asn": None, "isp": "N/A"}
+        geo = {"country": "N/A", "city": "N/A", "asn": None, "isp": "N/A", "lat": None, "lon": None}
         logger.info(f"ℹ️ Skipping geo enrichment - no IP available")
     # Enrich open ports (scan thực tế)
     ports = []

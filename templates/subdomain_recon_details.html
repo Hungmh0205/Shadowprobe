@@ -138,6 +138,12 @@
 
                 <section class="bg-white rounded-xl p-6 shadow-sm">
                     <h2 class="text-lg font-semibold mb-4">Open Ports</h2>
+                    {% if ip %}
+                    <div class="mb-4 p-4 bg-blue-50 rounded-lg">
+                        <div class="text-sm text-blue-600 font-medium">IP Address</div>
+                        <div class="text-lg font-mono text-blue-800">{{ ip }}</div>
+                    </div>
+                    {% endif %}
                     {% if ports %}
                     <div class="overflow-x-auto">
                         <table class="w-full">
@@ -187,7 +193,14 @@
                     <h2 class="text-lg font-semibold mb-4">Screenshot Preview</h2>
                     {% if screenshot_url %}
                     <div class="aspect-video rounded-lg overflow-hidden bg-gray-100">
-                        <img src="{{ screenshot_url }}" alt="Website Screenshot" class="w-full h-full object-cover">
+                        <img src="{{ screenshot_url }}" 
+                             alt="Website Screenshot" 
+                             class="w-full h-full object-cover"
+                             data-alt1="{{ screenshot_alt1 or '' }}"
+                             data-alt2="{{ screenshot_alt2 or '' }}"
+                             data-alt3="{{ screenshot_alt3 or '' }}"
+                             data-alt4="{{ screenshot_alt4 or '' }}"
+                             onerror="this.onerror=null; this.src=this.dataset.alt1 || this.dataset.alt2 || this.dataset.alt3 || this.dataset.alt4 || '';">
                     </div>
                     {% else %}
                     <div class="text-center py-8">

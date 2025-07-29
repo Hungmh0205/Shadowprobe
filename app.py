@@ -1183,7 +1183,35 @@ def website_detail(website_id):
     db.close()
     if not website:
         return render_template('404.html'), 404
-    return render_template('website_detail.html', website=website)
+    # Lấy geo info từ scan gần nhất
+    from core.db_sqlite import get_scan_results, get_scans_by_website
+    scans = get_scans_by_website(website_id)
+    geo = {}
+    ip = ''
+    if scans:
+        latest_scan = scans[0]
+        results = get_scan_results(latest_scan.scan_id)
+        # Ưu tiên lấy geo từ host_info nếu có
+        host_info = results.get('host_info', {}) if results else {}
+        ip = host_info.get('primary_ip') or (host_info.get('ips', [None])[0]) or ''
+        geo = host_info.get('geo', {}) if host_info else {}
+        # Nếu geo thiếu lat/lon, thử tra cứu lại bằng ip-api
+        if not (geo and 'lat' in geo and 'lon' in geo) and ip:
+            try:
+                import requests
+                resp = requests.get(f'http://ip-api.com/json/{ip}', timeout=5).json()
+                if resp.get('status') == 'success' and 'lat' in resp and 'lon' in resp:
+                    geo = {
+                        'lat': resp['lat'],
+                        'lon': resp['lon'],
+                        'city': resp.get('city'),
+                        'country': resp.get('country')
+                    }
+            except Exception:
+                geo = {}
+        if not (geo and 'lat' in geo and 'lon' in geo):
+            geo = {}
+    return render_template('website_detail.html', website=website, geo=geo, ip=ip)
 
 @app.route('/api/websites/<int:website_id>/scans')
 def get_website_scans(website_id):
@@ -1708,6 +1736,10 @@ def subdomain_details(subdomain):
                             ports=result.get('ports', []),
                             technologies=result.get('technologies', []),
                             screenshot_url=result.get('screenshot_url', ''),
+                            screenshot_alt1=cached_result.screenshot_alt1 or '' if cached_result else '',
+                            screenshot_alt2=cached_result.screenshot_alt2 or '' if cached_result else '',
+                            screenshot_alt3=cached_result.screenshot_alt3 or '' if cached_result else '',
+                            screenshot_alt4=cached_result.screenshot_alt4 or '' if cached_result else '',
                             hash=result.get('hash', {}),
                             whois=result.get('whois', {}),
                             reverse_ip_domains=result.get('reverse_ip_domains', []),

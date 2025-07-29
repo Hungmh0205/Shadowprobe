@@ -201,23 +201,24 @@ async def enrich_subdomain_fast(subdomain, timeout=30):
     
     logger.info(f"🔧 Technologies detected: {technologies}")
     
-    # Screenshot URLs with free services
+    # Screenshot URLs with automatic fallback
     try:
         from core.screenshot_generator import screenshot_generator
-        screenshot_info = screenshot_generator.get_screenshot_info(subdomain)
+        screenshot_info = await screenshot_generator.get_screenshot_info_async(subdomain)
         screenshot_url = screenshot_info["screenshot_url"]
         screenshot_alt1 = screenshot_info["screenshot_alt1"]
         screenshot_alt2 = screenshot_info["screenshot_alt2"]
         screenshot_alt3 = screenshot_info["screenshot_alt3"]
         screenshot_alt4 = screenshot_info["screenshot_alt4"]
-        logger.info(f"📸 Screenshot URLs generated for {subdomain}")
+        screenshot_method = screenshot_info.get("method", "unknown")
+        logger.info(f"📸 Screenshot generated for {subdomain} using {screenshot_method}")
     except ImportError:
         # Fallback if screenshot generator not available
         screenshot_url = f"https://image.thum.io/get/width/1200/crop/800/noanimate/http://{subdomain}"
-        screenshot_alt1 = f"https://image.thum.io/get/width/1200/crop/800/noanimate/https://{subdomain}"
-        screenshot_alt2 = f"https://image.thum.io/get/width/1200/crop/800/http://{subdomain}"
-        screenshot_alt3 = f"https://image.thum.io/get/width/1200/crop/800/https://{subdomain}"
-        screenshot_alt4 = f"https://image.thum.io/get/width/1200/crop/800/noanimate/http://{subdomain}"
+        screenshot_alt1 = f"https://image.thum.io/get/width/1200/crop/800/noanimate/https://{subdomain}?user_agent=Mozilla/5.0%20(Windows%20NT%2010.0;%20Win64;%20x64)%20AppleWebKit/537.36"
+        screenshot_alt2 = f"https://image.thum.io/get/width/1200/crop/800/http://{subdomain}?user_agent=Mozilla/5.0%20(Windows%20NT%2010.0;%20Win64;%20x64)%20AppleWebKit/537.36"
+        screenshot_alt3 = f"https://image.thum.io/get/width/1200/crop/800/https://{subdomain}?user_agent=Mozilla/5.0%20(Windows%20NT%2010.0;%20Win64;%20x64)%20AppleWebKit/537.36"
+        screenshot_alt4 = f"https://image.thum.io/get/width/1200/crop/800/noanimate/http://{subdomain}?user_agent=Mozilla/5.0%20(Windows%20NT%2010.0;%20Win64;%20x64)%20AppleWebKit/537.36"
         logger.info(f"📸 Fallback screenshot URLs for {subdomain}")
     
     # Mock SSL
@@ -287,7 +288,9 @@ async def get_geo_async(ip):
                         "country": data.get("country", "N/A"),
                         "city": data.get("city", "N/A"),
                         "asn": data.get("as"),
-                        "isp": data.get("isp", "N/A")
+                        "isp": data.get("isp", "N/A"),
+                        "lat": data.get("lat"),
+                        "lon": data.get("lon")
                     }
                     geo_cache[ip] = geo
                     return geo
@@ -295,7 +298,7 @@ async def get_geo_async(ip):
         logger.debug(f"Geo API failed for {ip}: {e}")
     except Exception as e:
         logger.warning(f"Unexpected geo error for {ip}: {e}")
-    return {"country": "N/A", "city": "N/A", "asn": None, "isp": "N/A"}
+    return {"country": "N/A", "city": "N/A", "asn": None, "isp": "N/A", "lat": None, "lon": None}
 
 async def get_http_async(url):
     """Async HTTP information retrieval with better error handling"""

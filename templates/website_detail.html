@@ -6,6 +6,7 @@
   <title>{{ website.name }} - Website Detail</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body class="bg-gray-100 min-h-screen">
   <aside class="fixed top-0 left-0 h-screen w-64 bg-gray-900 text-white flex flex-col z-40">
@@ -103,6 +104,25 @@
             <button id="scan-btn" class="mt-6 bg-white text-blue-600 font-semibold rounded px-6 py-2 shadow hover:bg-gray-100">Scan</button>
           </div>
         </div>
+        <!-- Map display: only in summary tab -->
+        <div id="server-map" class="my-8 rounded-lg shadow mx-auto" style="height: 500px; width: 80%"></div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+      var geo = JSON.parse('{{ geo|tojson|safe }}');
+      var ip = "{{ ip }}";
+      var subdomain = "{{ website.address }}";
+      if (geo && typeof geo.lat === 'number' && typeof geo.lon === 'number') {
+        var map = L.map('server-map').setView([geo.lat, geo.lon], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        L.marker([geo.lat, geo.lon]).addTo(map)
+          .bindPopup('<b>' + subdomain + '</b><br>IP: ' + ip + '<br>' + (geo.city || '') + ', ' + (geo.country || ''))
+          .openPopup();
+      } else {
+        document.getElementById('server-map').innerHTML = '<div class="text-center text-gray-400 py-16">No geolocation data available</div>';
+      }
+    </script>
       </div>
       <!-- Tab content: Subdomains -->
       <div id="tab-subdomains" class="hidden">
@@ -130,9 +150,9 @@
               <div class="text-lg font-bold text-gray-800" id="scan-duration">N/A</div>
             </div>
           </div>
-                  <div class="flex items-center space-x-2 mb-4">
-          <input type="text" id="subdomain-search" placeholder="Search subdomains..." class="px-4 py-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-gray-700 flex-1" />
-        </div>
+          <div class="flex items-center space-x-2 mb-4">
+            <input type="text" id="subdomain-search" placeholder="Search subdomains..." class="px-4 py-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-gray-700 flex-1" />
+          </div>
           <div class="flex flex-col items-center justify-center py-24">
             <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">
               <rect x="8" y="24" width="80" height="56" rx="8" fill="#F3F4F6"/>
@@ -1150,6 +1170,6 @@
         }
       </script>
     </main>
-  </div>
-</body>
+    
+  </body>
 </html> 
