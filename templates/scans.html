@@ -632,35 +632,42 @@
     // Display scan results in modal
     function displayScanResults(data, scanId) {
       const content = document.getElementById('scanDetailsContent');
-      
-      // Format scan duration
-      const duration = data.scan_duration ? `${data.scan_duration.toFixed(1)}s` : 'N/A';
-      
-      // Format target type
-      const targetType = getScanType(data.target);
-      
-      // Count services by port
-      const serviceCount = data.services ? data.services.length : 0;
-      
-      // Count subdomains
-      const subdomainCount = data.subdomains ? data.subdomains.length : 0;
-      
+      // Lấy đúng trường từ API (ưu tiên data.results, data.scan_info)
+      const results = data.results || data;
+      const scanInfo = data.scan_info || {};
+
+      const target = scanInfo.target || results.target || 'N/A';
+      const scanType = scanInfo.scan_type || results.scan_type || 'Unknown';
+      const status = scanInfo.status || results.status || 'Unknown';
+      const duration = (scanInfo.duration !== undefined && scanInfo.duration !== null)
+        ? `${scanInfo.duration.toFixed(1)}s`
+        : (results.scan_duration ? `${results.scan_duration.toFixed(1)}s` : 'N/A');
+
+      const openPorts = results.open_ports || [];
+      const services = results.services || [];
+      const subdomains = results.subdomains || [];
+      const hostInfo = results.host_info || {};
+
+      // Render lại UI với các biến mới
+      const serviceCount = services.length;
+      const subdomainCount = subdomains.length;
+      const targetType = getScanType(target);
+
       content.innerHTML = `
         <div class="mb-6">
           <h2 class="text-2xl font-bold text-gray-800 mb-2">Scan Results</h2>
           <p class="text-gray-600">Scan ID: ${scanId}</p>
         </div>
-        
         <!-- Scan Summary -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <div class="bg-blue-50 p-4 rounded-lg">
             <div class="text-blue-600 text-sm font-medium">Target</div>
-            <div class="text-lg font-semibold">${data.target}</div>
+            <div class="text-lg font-semibold">${target}</div>
             <div class="text-sm text-gray-500">${targetType}</div>
           </div>
           <div class="bg-green-50 p-4 rounded-lg">
             <div class="text-green-600 text-sm font-medium">Open Ports</div>
-            <div class="text-lg font-semibold">${data.open_ports ? data.open_ports.length : 0}</div>
+            <div class="text-lg font-semibold">${openPorts.length}</div>
             <div class="text-sm text-gray-500">Ports found</div>
           </div>
           <div class="bg-purple-50 p-4 rounded-lg">
@@ -674,7 +681,6 @@
             <div class="text-sm text-gray-500">Subdomains found</div>
           </div>
         </div>
-        
         <!-- Scan Details -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <!-- Services Section -->
@@ -683,9 +689,9 @@
               <i class="fas fa-server mr-2 text-blue-500"></i>
               Services (${serviceCount})
             </h3>
-            ${data.services && data.services.length > 0 ? `
+            ${services && services.length > 0 ? `
               <div class="space-y-3 max-h-96 overflow-y-auto">
-                ${data.services.map(service => `
+                ${services.map(service => `
                   <div class="border border-gray-200 rounded p-3">
                     <div class="flex justify-between items-start mb-2">
                       <span class="font-medium text-gray-800">Port ${service.port}</span>
@@ -712,16 +718,15 @@
               </div>
             `}
           </div>
-          
           <!-- Subdomains Section -->
           <div class="bg-white border border-gray-200 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
               <i class="fas fa-sitemap mr-2 text-green-500"></i>
               Subdomains (${subdomainCount})
             </h3>
-            ${data.subdomains && data.subdomains.length > 0 ? `
+            ${subdomains && subdomains.length > 0 ? `
               <div class="space-y-2 max-h-96 overflow-y-auto">
-                ${data.subdomains.map(subdomain => `
+                ${subdomains.map(subdomain => `
                   <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
                     <span class="text-sm font-medium">${subdomain.subdomain || subdomain}</span>
                     ${subdomain.ip_address ? `
@@ -745,43 +750,41 @@
             `}
           </div>
         </div>
-        
         <!-- Host Information -->
-        ${data.host_info ? `
+        ${hostInfo && Object.keys(hostInfo).length > 0 ? `
           <div class="mt-6 bg-white border border-gray-200 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
               <i class="fas fa-info-circle mr-2 text-purple-500"></i>
               Host Information
             </h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              ${data.host_info.hostname ? `
+              ${hostInfo.hostname ? `
                 <div>
                   <span class="text-sm font-medium text-gray-600">Hostname:</span>
-                  <span class="ml-2 text-gray-800">${data.host_info.hostname}</span>
+                  <span class="ml-2 text-gray-800">${hostInfo.hostname}</span>
                 </div>
               ` : ''}
-              ${data.host_info.ip_addresses ? `
+              ${hostInfo.ip_addresses ? `
                 <div>
                   <span class="text-sm font-medium text-gray-600">IP Addresses:</span>
-                  <span class="ml-2 text-gray-800">${Array.isArray(data.host_info.ip_addresses) ? data.host_info.ip_addresses.join(', ') : data.host_info.ip_addresses}</span>
+                  <span class="ml-2 text-gray-800">${Array.isArray(hostInfo.ip_addresses) ? hostInfo.ip_addresses.join(', ') : hostInfo.ip_addresses}</span>
                 </div>
               ` : ''}
-              ${data.host_info.country ? `
+              ${hostInfo.country ? `
                 <div>
                   <span class="text-sm font-medium text-gray-600">Country:</span>
-                  <span class="ml-2 text-gray-800">${data.host_info.country}</span>
+                  <span class="ml-2 text-gray-800">${hostInfo.country}</span>
                 </div>
               ` : ''}
-              ${data.host_info.city ? `
+              ${hostInfo.city ? `
                 <div>
                   <span class="text-sm font-medium text-gray-600">City:</span>
-                  <span class="ml-2 text-gray-800">${data.host_info.city}</span>
+                  <span class="ml-2 text-gray-800">${hostInfo.city}</span>
                 </div>
               ` : ''}
             </div>
           </div>
         ` : ''}
-        
         <!-- Scan Metadata -->
         <div class="mt-6 bg-gray-50 rounded-lg p-4">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -791,15 +794,14 @@
             </div>
             <div>
               <span class="text-gray-600">Scan Type:</span>
-              <span class="ml-2 font-medium">${data.scan_type || 'Full Scan'}</span>
+              <span class="ml-2 font-medium">${scanType || 'Full Scan'}</span>
             </div>
             <div>
               <span class="text-gray-600">Status:</span>
-              <span class="ml-2 font-medium text-green-600">Completed</span>
+              <span class="ml-2 font-medium text-green-600">${status}</span>
             </div>
           </div>
         </div>
-        
         <!-- Action Buttons -->
         <div class="mt-6 flex justify-end space-x-3">
           <button onclick="downloadScanResults('${scanId}')" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center">
