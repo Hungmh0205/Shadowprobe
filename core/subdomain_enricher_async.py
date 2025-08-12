@@ -437,59 +437,153 @@ async def get_whois_async(subdomain):
                 logger.debug(f"WHOIS server {server} failed for {subdomain}: {server_error}")
                 continue
         
-        # If all servers failed, try alternative method
-        logger.info(f"🔄 Trying alternative WHOIS lookup for {subdomain}")
+        # Try online WHOIS API as last resort (especially for Windows)
+        logger.info(f"🌐 Trying online WHOIS API for {subdomain}")
         try:
-            import socket
-            import subprocess
-            
-            # Try using system whois command
-            result = await loop.run_in_executor(executor, subprocess.run, 
-                ['whois', subdomain], 
-                subprocess.PIPE, subprocess.PIPE, subprocess.PIPE)
-            
-            if result.returncode == 0:
-                whois_output = result.stdout.decode('utf-8', errors='ignore')
-                
-                # Parse basic info from output
-                registrar = "N/A"
-                creation_date = "N/A"
-                expiration_date = "N/A"
-                
-                for line in whois_output.split('\n'):
-                    line = line.strip().lower()
-                    if 'registrar:' in line:
-                        registrar = line.split(':', 1)[1].strip()
-                    elif 'creation date:' in line or 'created:' in line:
-                        creation_date = line.split(':', 1)[1].strip()
-                    elif 'expiration date:' in line or 'expires:' in line:
-                        expiration_date = line.split(':', 1)[1].strip()
-                
-                whois_info = {
-                    "registrar": registrar,
-                    "creation_date": creation_date,
-                    "expiration_date": expiration_date,
-                    "updated_date": "N/A",
-                    "status": "N/A",
-                    "name_servers": "N/A"
-                }
-                
-                logger.info(f"✅ Alternative WHOIS for {subdomain}: {registrar}")
-                return whois_info
-                
-        except Exception as alt_error:
-            logger.debug(f"Alternative WHOIS failed for {subdomain}: {alt_error}")
+            async with aiohttp.ClientSession() as session:
+                # Use a more reliable free WHOIS API
+                api_url = f"https://whois.whoisxmlapi.com/api/v1?apiKey=demo&domainName={subdomain}"
+                async with session.get(api_url, timeout=10) as response:
+                    logger.debug(f"WHOIS API response status: {response.status}")
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.debug(f"WHOIS API response: {data}")
+                        if data.get('registrar'):
+                            whois_info = {
+                                "registrar": data.get('registrar', {}).get('name', 'N/A'),
+                                "creation_date": data.get('creationDate', 'N/A'),
+                                "expiration_date": data.get('expirationDate', 'N/A'),
+                                "updated_date": data.get('updatedDate', 'N/A'),
+                                "status": 'N/A',
+                                "name_servers": 'N/A'
+                            }
+                            logger.info(f"✅ Online WHOIS API for {subdomain}: {whois_info.get('registrar')}")
+                            return whois_info
+                        else:
+                            logger.debug(f"WHOIS API returned no registrar info for {subdomain}")
+                    else:
+                        logger.debug(f"WHOIS API returned status {response.status} for {subdomain}")
+        except Exception as api_error:
+            logger.debug(f"Online WHOIS API failed for {subdomain}: {api_error}")
         
-        # Return default values if all methods failed
-        logger.warning(f"❌ All WHOIS methods failed for {subdomain}")
-        return {
-            "registrar": "N/A", 
-            "creation_date": "N/A", 
-            "expiration_date": "N/A",
-            "updated_date": "N/A",
-            "status": "N/A",
-            "name_servers": "N/A"
-        }
+        # Try another WHOIS API as final fallback
+        logger.info(f"🌐 Trying alternative WHOIS API for {subdomain}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Use a different free WHOIS API
+                api_url = f"https://api.domainsdb.info/v1/domains/search?domain={subdomain}"
+                async with session.get(api_url, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('domains') and len(data['domains']) > 0:
+                            domain_info = data['domains'][0]
+                            whois_info = {
+                                "registrar": domain_info.get('registrar', 'N/A'),
+                                "creation_date": domain_info.get('create_date', 'N/A'),
+                                "expiration_date": domain_info.get('expiry_date', 'N/A'),
+                                "updated_date": domain_info.get('update_date', 'N/A'),
+                                "status": 'N/A',
+                                "name_servers": 'N/A'
+                            }
+                            logger.info(f"✅ Alternative WHOIS API for {subdomain}: {whois_info.get('registrar')}")
+                            return whois_info
+        except Exception as api_error:
+            logger.debug(f"Alternative WHOIS API failed for {subdomain}: {api_error}")
+        
+        # Try direct WHOIS query using socket connection
+        logger.info(f"🔌 Trying direct WHOIS query for {subdomain}")
+        try:
+            # Extract domain from subdomain
+            domain_parts = subdomain.split('.')
+            if len(domain_parts) >= 2:
+                domain = '.'.join(domain_parts[-2:])  # Get main domain (e.g., vulnweb.com from testphp.vulnweb.com)
+                
+                # Try common WHOIS servers
+                whois_servers = [
+                    ('whois.verisign-grs.com', 43),
+                    ('whois.internic.net', 43),
+                    ('whois.iana.org', 43)
+                ]
+                
+                for server, port in whois_servers:
+                    try:
+                        # Create socket connection
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(10)
+                        sock.connect((server, port))
+                        
+                        # Send WHOIS query
+                        query = f"{domain}\r\n".encode('utf-8')
+                        sock.send(query)
+                        
+                        # Receive response
+                        response = b""
+                        while True:
+                            data = sock.recv(1024)
+                            if not data:
+                                break
+                            response += data
+                        
+                        sock.close()
+                        
+                        # Parse response
+                        response_text = response.decode('utf-8', errors='ignore')
+                        if response_text and 'not found' not in response_text.lower():
+                            # Basic parsing of WHOIS response
+                            registrar = "N/A"
+                            creation_date = "N/A"
+                            expiration_date = "N/A"
+                            
+                            for line in response_text.split('\n'):
+                                line = line.strip().lower()
+                                if 'registrar:' in line:
+                                    registrar = line.split(':', 1)[1].strip()
+                                elif 'creation date:' in line or 'created:' in line:
+                                    creation_date = line.split(':', 1)[1].strip()
+                                elif 'expiration date:' in line or 'expires:' in line:
+                                    expiration_date = line.split(':', 1)[1].strip()
+                            
+                            if registrar != "N/A":
+                                whois_info = {
+                                    "registrar": registrar,
+                                    "creation_date": creation_date,
+                                    "expiration_date": expiration_date,
+                                    "updated_date": "N/A",
+                                    "status": "N/A",
+                                    "name_servers": "N/A"
+                                }
+                                logger.info(f"✅ Direct WHOIS query for {subdomain}: {registrar}")
+                                return whois_info
+                                
+                    except Exception as sock_error:
+                        logger.debug(f"WHOIS server {server} failed for {subdomain}: {sock_error}")
+                        continue
+                        
+        except Exception as direct_error:
+            logger.debug(f"Direct WHOIS query failed for {subdomain}: {direct_error}")
+        
+        # Final fallback - try to get basic domain info
+        logger.info(f"🌐 Trying basic domain info for {subdomain}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Use IP-API for basic domain info as last resort
+                api_url = f"http://ip-api.com/json/{subdomain}"
+                async with session.get(api_url, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('status') == 'success':
+                            whois_info = {
+                                "registrar": "Unknown (IP-API)",
+                                "creation_date": "N/A",
+                                "expiration_date": "N/A",
+                                "updated_date": "N/A",
+                                "status": data.get('status', 'N/A'),
+                                "name_servers": data.get('org', 'N/A')
+                            }
+                            logger.info(f"✅ Basic domain info for {subdomain}: {data.get('org', 'N/A')}")
+                            return whois_info
+        except Exception as api_error:
+            logger.debug(f"Basic domain info failed for {subdomain}: {api_error}")
             
     except Exception as e:
         logger.warning(f"❌ WHOIS failed for {subdomain}: {e}")

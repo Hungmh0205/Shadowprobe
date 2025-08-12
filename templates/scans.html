@@ -84,8 +84,8 @@
           </a>
         </li>
         <li>
-          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
-            <i class="fas fa-bug mr-3"></i> Vulnerabilities
+          <a href="/vulnerabilities" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-shield-alt mr-3"></i> Vulnerabilities
           </a>
         </li>
         <li>
@@ -226,6 +226,14 @@
           <label class="w-40 text-gray-700 font-medium">Website</label>
           <select id="modalWebsiteSelect" class="flex-1 border border-gray-300 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500">
             <option value="">Select a website to scan</option>
+          </select>
+        </div>
+        
+        <div class="mb-4 flex items-center">
+          <label class="w-40 text-gray-700 font-medium">Type</label>
+          <select id="modalScanType" class="flex-1 border border-gray-300 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500">
+            <option value="full">Reconization</option>
+            <option value="vulnerability">Vulnerability Scan</option>
           </select>
         </div>
         
@@ -396,22 +404,42 @@
       }
     }
 
-    // Load scans from API
+    // Load scans from API (both regular and vulnerability scans)
     function loadScans() {
       if (isLoading) return;
       isLoading = true;
       
-      fetch('/api/history')
-        .then(res => res.json())
-        .then(data => {
-          console.log('Loaded scans:', data.scans);
-          allScans = data.scans || [];
+      // Load both regular scans and vulnerability scans
+      Promise.all([
+        fetch('/api/history').then(res => res.json()),
+        fetch('/api/vuln/scans').then(res => res.json()).catch(() => ({ scans: [] }))
+      ])
+        .then(([regularData, vulnData]) => {
+          console.log('Loaded regular scans:', regularData.scans);
+          console.log('Loaded vulnerability scans:', vulnData.scans);
+          
+          // Combine and format all scans
+          const regularScans = (regularData.scans || []).map(scan => ({
+            ...scan,
+            scan_type: scan.scan_type || 'reconnaissance',
+            is_vulnerability: false
+          }));
+          
+          const vulnScans = (vulnData.scans || []).map(scan => ({
+            ...scan,
+            scan_type: 'vulnerability',
+            is_vulnerability: true
+          }));
+          
+          allScans = [...regularScans, ...vulnScans];
+          
           // Sort scans by start_time (newest first)
           allScans.sort((a, b) => {
             const timeA = new Date(a.start_time || 0);
             const timeB = new Date(b.start_time || 0);
             return timeB - timeA; // Descending order (newest first)
           });
+          
           filteredScans = [...allScans];
           renderScanTable();
           loadWebsitesForFilter();
@@ -495,7 +523,7 @@
       const statusBadge = getStatusBadge(scan.status);
       
       // Determine scan type
-      const scanType = getScanType(scan.target);
+      const scanType = getScanType(scan);
       
       tr.innerHTML = `
         <td class="px-6 py-4 whitespace-nowrap">
@@ -533,9 +561,25 @@
       return `<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusInfo.class}">${statusInfo.text}</span>`;
     }
 
-    // Get scan type based on target
-    function getScanType(target) {
+    // Get scan type based on target and scan data
+    function getScanType(scan) {
+      if (!scan) return 'Unknown';
+      
+      // If scan has explicit scan_type, use it
+      if (scan.scan_type) {
+        if (scan.scan_type === 'vulnerability') return 'Vulnerability Scan';
+        if (scan.scan_type === 'reconnaissance') return 'Reconnaissance';
+        if (scan.scan_type === 'full') return 'Full Scan';
+        return scan.scan_type.charAt(0).toUpperCase() + scan.scan_type.slice(1);
+      }
+      
+      // If scan has is_vulnerability flag, use it
+      if (scan.is_vulnerability) return 'Vulnerability Scan';
+      
+      // Fallback: check target type
+      const target = scan.target;
       if (!target) return 'Unknown';
+      
       // Simple check: if it's an IP address
       const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
       return ipRegex.test(target) ? 'IP Address' : 'Domain';
@@ -603,8 +647,15 @@
         </div>
       `;
       
+      // Determine if this is a vulnerability scan
+      const scan = allScans.find(s => s.scan_id === scanId);
+      const isVulnerabilityScan = scan && (scan.is_vulnerability || scan.scan_type === 'vulnerability');
+      
+      // Choose appropriate API endpoint
+      const apiEndpoint = isVulnerabilityScan ? `/api/vuln/scan/${scanId}/results` : `/api/scan/${scanId}/results`;
+      
       // Fetch scan results
-      fetch(`/api/scan/${scanId}/results`)
+      fetch(apiEndpoint)
         .then(res => {
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -613,7 +664,7 @@
         })
         .then(data => {
           console.log('Scan results:', data);
-          displayScanResults(data, scanId);
+          displayScanResults(data, scanId, isVulnerabilityScan);
         })
         .catch(error => {
           console.error('Error fetching scan results:', error);
@@ -630,7 +681,7 @@
     }
 
     // Display scan results in modal
-    function displayScanResults(data, scanId) {
+    function displayScanResults(data, scanId, isVulnerabilityScan = false) {
       const content = document.getElementById('scanDetailsContent');
       // Lấy đúng trường từ API (ưu tiên data.results, data.scan_info)
       const results = data.results || data;
@@ -647,15 +698,17 @@
       const services = results.services || [];
       const subdomains = results.subdomains || [];
       const hostInfo = results.host_info || {};
+      const findings = results.findings || [];
 
       // Render lại UI với các biến mới
       const serviceCount = services.length;
       const subdomainCount = subdomains.length;
-      const targetType = getScanType(target);
+      const findingsCount = findings.length;
+      const targetType = getScanType({ target });
 
       content.innerHTML = `
         <div class="mb-6">
-          <h2 class="text-2xl font-bold text-gray-800 mb-2">Scan Results</h2>
+          <h2 class="text-2xl font-bold text-gray-800 mb-2">${isVulnerabilityScan ? 'Vulnerability Scan' : 'Scan'} Results</h2>
           <p class="text-gray-600">Scan ID: ${scanId}</p>
         </div>
         <!-- Scan Summary -->
@@ -665,15 +718,23 @@
             <div class="text-lg font-semibold">${target}</div>
             <div class="text-sm text-gray-500">${targetType}</div>
           </div>
+          ${isVulnerabilityScan ? `
+          <div class="bg-red-50 p-4 rounded-lg">
+            <div class="text-red-600 text-sm font-medium">Vulnerabilities</div>
+            <div class="text-lg font-semibold">${findingsCount}</div>
+            <div class="text-sm text-gray-500">Findings detected</div>
+          </div>
+          ` : `
           <div class="bg-green-50 p-4 rounded-lg">
-            <div class="text-green-600 text-sm font-medium">Open Ports</div>
+            <div class="text-blue-600 text-sm font-medium">Open Ports</div>
             <div class="text-lg font-semibold">${openPorts.length}</div>
             <div class="text-sm text-gray-500">Ports found</div>
           </div>
+          `}
           <div class="bg-purple-50 p-4 rounded-lg">
-            <div class="text-purple-600 text-sm font-medium">Services</div>
-            <div class="text-lg font-semibold">${serviceCount}</div>
-            <div class="text-sm text-gray-500">Services detected</div>
+            <div class="text-purple-600 text-sm font-medium">${isVulnerabilityScan ? 'OWASP Modules' : 'Services'}</div>
+            <div class="text-lg font-semibold">${isVulnerabilityScan ? 'A01-A10' : serviceCount}</div>
+            <div class="text-sm text-gray-500">${isVulnerabilityScan ? 'Modules scanned' : 'Services detected'}</div>
           </div>
           <div class="bg-orange-50 p-4 rounded-lg">
             <div class="text-orange-600 text-sm font-medium">Subdomains</div>
@@ -853,7 +914,7 @@
 
         // Type filter
         if (typeFilter) {
-          const scanType = getScanType(scan.target);
+          const scanType = getScanType(scan);
           if (scanType !== typeFilter) {
             return false;
           }
@@ -863,7 +924,7 @@
         if (searchFilter) {
           const website = allWebsites.find(w => String(w.id) === String(scan.website_id));
           const websiteName = website ? website.name : '';
-          const searchText = `${scan.target} ${websiteName} ${scan.status} ${getScanType(scan.target)}`.toLowerCase();
+          const searchText = `${scan.target} ${websiteName} ${scan.status} ${getScanType(scan)}`.toLowerCase();
           if (!searchText.includes(searchFilter)) {
             return false;
           }
@@ -938,6 +999,8 @@
     // Launch scan from modal
     function launchScan() {
       const websiteId = document.getElementById('modalWebsiteSelect').value;
+      const scanType = document.getElementById('modalScanType').value;
+      
       if (!websiteId) {
         alert('Please select a website to scan');
         return;
@@ -955,21 +1018,36 @@
       launchBtn.disabled = true;
       launchBtn.textContent = 'Launching...';
 
+      // Choose API endpoint based on scan type
+      let apiEndpoint = '/api/scan';
+      let requestBody = { 
+        target: website.address,
+        website_id: parseInt(websiteId),
+        scan_type: scanType
+      };
+
+      if (scanType === 'vulnerability') {
+        apiEndpoint = '/api/vuln/scan';
+        requestBody = {
+          target: website.address,
+          website_id: parseInt(websiteId),
+          profile: 'full'
+        };
+      }
+
       // Start scan
-      fetch('/api/scan', {
+      fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          target: website.address,
-          website_id: parseInt(websiteId)
-        })
+        body: JSON.stringify(requestBody)
       })
       .then(res => res.json())
       .then(data => {
         if (data.error) {
           alert('Scan failed: ' + data.error);
         } else {
-          alert('Scan started successfully!');
+          const scanTypeText = scanType === 'vulnerability' ? 'Vulnerability scan' : 'Reconnaissance scan';
+          alert(`${scanTypeText} started successfully!`);
           closeNewScanModal();
           // Refresh scan list after a short delay
           setTimeout(() => {
@@ -1088,12 +1166,22 @@
       // Add event listener for launch scan button
       document.getElementById('launchScanBtn').addEventListener('click', launchScan);
       
-      // Check for newscan parameter
-      if (window.location.search.includes('newscan=1')) {
-        setTimeout(() => {
-          openNewScanModal();
-        }, 200);
-      }
+                      // Check for newscan parameter
+                if (window.location.search.includes('newscan=1')) {
+                  setTimeout(() => {
+                    openNewScanModal();
+                    
+                    // Check if scanType parameter is provided and set the dropdown
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const scanType = urlParams.get('scanType');
+                    if (scanType) {
+                      const scanTypeDropdown = document.getElementById('modalScanType');
+                      if (scanTypeDropdown) {
+                        scanTypeDropdown.value = scanType;
+                      }
+                    }
+                  }, 200);
+                }
     });
 
     // Tab switching logic

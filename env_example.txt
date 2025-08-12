@@ -1,0 +1,33 @@
+# ShadowProbe Web Environment Configuration
+# Copy this file to .env and fill in your actual values
+
+# Security Configuration
+SECRET_KEY=your-super-secret-key-here-change-this-immediately
+API_KEY=your-api-key-for-mutating-operations
+ALLOWED_ORIGINS=http://localhost:5000,http://127.0.0.1:5000
+
+# External API Keys (Optional)
+API_KEY_BRAVE=your-brave-search-api-key
+API_KEY_VIRUSTOTAL=your-virustotal-api-key
+API_KEY_SHODAN=your-shodan-api-key
+
+# Database Configuration
+DATABASE_URL=sqlite:///shadowprobe.db
+
+# Logging Configuration
+LOG_LEVEL=INFO
+LOG_FILE=logs/app.log
+
+# Rate Limiting
+RATE_LIMIT_DEFAULT=100 per minute
+RATE_LIMIT_STRICT=10 per minute
+
+# Scan Configuration
+MAX_CONCURRENT_SCANS=3
+SCAN_TIMEOUT=600
+MAX_SUBDOMAINS_PER_SCAN=50
+
+# Security Headers
+ENABLE_HSTS=true
+ENABLE_CSP=true
+ENABLE_XSS_PROTECTION=true

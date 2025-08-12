@@ -54,7 +54,7 @@ def check_dependencies():
 def check_nmap():
     """Check if nmap is available"""
     try:
-        result = subprocess.run(['nmap', '--version'], 
+        result = SecurityUtils.safe_subprocess_run(['nmap', '--version'], 
                               capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             print("✅ Nmap is available")
@@ -118,7 +118,8 @@ def start_server():
     try:
         # Import and run the app
         from app import app
-        app.run(debug=True, host='0.0.0.0', port=5000)
+        # PRODUCTION MODE - Debug disabled for security
+        app.run(debug=False, host='0.0.0.0', port=5000)
     except KeyboardInterrupt:
         print("\n👋 Server stopped by user")
     except Exception as e:

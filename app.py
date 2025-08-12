@@ -2,6 +2,7 @@ import sys
 import asyncio
 import socket # Added for fallback port scanning
 import ast
+import hmac
 
 # Windows-specific asyncio configuration
 if sys.platform.startswith("win"):
@@ -10,6 +11,8 @@ if sys.platform.startswith("win"):
 
 from flask import Flask, request, jsonify, render_template, session, send_file
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import logging
 import time
 import threading
@@ -49,17 +52,81 @@ except ImportError as e:
 import asyncio
 
 from core.async_scan_manager import get_scan_manager, start_scan as async_start_scan, get_scan_status as async_get_scan_status
+from scanner import register_vuln_scanner, get_vuln_registry
+from scanner.vulnerabilities import get_registry as get_vuln_adapter_registry
+# Replace individual adapters with master adapter
+from scanner.vulnerabilities.owasp_master_adapter import run as master_vuln_scan, get_available_modules
+from core.db_sqlite import add_vuln_scan, update_vuln_scan_status, save_vuln_findings, get_vuln_scan_by_id, get_vuln_findings_by_scan
 from core.subdomain_enricher import enrich_subdomain_full
 from core.subdomain_enricher_async import enrich_subdomain_fast, enrich_subdomains_batch
 
 app = Flask(__name__)
-app.secret_key = 'shadowprobe_web_secret_key_2024'
-CORS(app)
+# Secret key from environment for security
+app.secret_key = os.getenv('SECRET_KEY', os.urandom(24))
+
+# Initialize enhanced logging FIRST
+try:
+    from core.enhanced_logging import init_enhanced_logging
+    enhanced_logger = init_enhanced_logging("ShadowProbe")
+    logger = enhanced_logger.logger
+    logger.info("✅ Enhanced logging initialized successfully")
+except Exception as e:
+    # Fallback to basic logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.warning(f"⚠️ Enhanced logging initialization failed: {e}")
+
+# Initialize security middleware AFTER logger is defined
+try:
+    from core.security_middleware import SecurityMiddleware
+    security_middleware = SecurityMiddleware(app)
+    logger.info("✅ Security middleware initialized successfully")
+except Exception as e:
+    logger.warning(f"⚠️ Security middleware initialization failed: {e}")
+    security_middleware = None
+
+# Enhanced CORS configuration with security
+def get_allowed_origins():
+    """Get and validate allowed origins from environment"""
+    origins = os.getenv('ALLOWED_ORIGINS', '').strip()
+    if not origins:
+        return []
+    
+    allowed = []
+    for origin in origins.split(','):
+        origin = origin.strip()
+        if origin:
+            # Validate origin format
+            if origin.startswith('http://') or origin.startswith('https://'):
+                # Prevent wildcard subdomains
+                if '*.' in origin:
+                    logger.warning(f"Wildcard subdomain not allowed: {origin}")
+                    continue
+                allowed.append(origin)
+            else:
+                logger.warning(f"Invalid origin format: {origin}")
+    
+    return allowed
+
+allowed_origins = get_allowed_origins()
+if allowed_origins:
+    CORS(app, 
+          resources={r"/api/*": {"origins": allowed_origins}},
+          supports_credentials=True,
+          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+          allow_headers=["Content-Type", "Authorization", "X-API-Key"])
+    logger.info(f"CORS enabled for origins: {allowed_origins}")
+else:
+    # Default: restrict to same origin
+    CORS(app, resources={r"/api/*": {"origins": []}})
+    logger.info("CORS restricted to same origin only")
+
+# Rate limiting
+limiter = Limiter(key_func=get_remote_address)
+limiter.init_app(app)
 init_db()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Enhanced logging already initialized above
 
 # Initialize ShadowProbe components
 try:
@@ -96,18 +163,103 @@ from flask import request, jsonify
 from concurrent.futures import ThreadPoolExecutor
 
 executor = ThreadPoolExecutor(max_workers=10)
+# --- Register OWASP Master Vulnerability Scanner
+try:
+    # Register the master scanner for all OWASP modules
+    available_modules = get_available_modules()
+    for module_code in available_modules:
+        register_vuln_scanner(
+            module_id=module_code,
+            name=f'OWASP {module_code}',
+            owasp=module_code,
+            runner=master_vuln_scan,  # Use the master adapter
+            supports_async=False,
+            targets=['web']
+        )
+    logger.info("✅ OWASP Master Vulnerability Scanner registered for modules: %s", available_modules)
+except Exception as e:
+    logger.warning("⚠️ Failed to register OWASP Master Vulnerability Scanner: %s", e)
+
+# Enhanced API key enforcement for all sensitive endpoints
+API_KEY_REQUIRED = os.getenv('API_KEY', '').strip()
+API_KEY_HEADER = 'X-API-Key'
+API_KEY_PARAM = 'api_key'
+
+def validate_api_key():
+    """Validate API key with enhanced security"""
+    if not API_KEY_REQUIRED:
+        return True
+    
+    # Get API key from header or query parameter
+    provided_key = request.headers.get(API_KEY_HEADER) or request.args.get(API_KEY_PARAM)
+    
+    if not provided_key:
+        logger.warning(f"Missing API key for {request.method} {request.path}")
+        return False
+    
+    # Constant-time comparison to prevent timing attacks
+    if not hmac.compare_digest(provided_key, API_KEY_REQUIRED):
+        logger.warning(f"Invalid API key for {request.method} {request.path}")
+        return False
+    
+    return True
+
+@app.before_request
+def enforce_api_key_for_mutating_requests():
+    """Enhanced API key enforcement with better security"""
+    try:
+        # Protect all API endpoints
+        if request.path.startswith('/api/'):
+            # Always require API key for sensitive operations
+            if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+                if not validate_api_key():
+                    return jsonify({'error': 'Unauthorized - Invalid or missing API key'}), 401
+            
+            # Rate limiting for all API endpoints
+            if not request.path.startswith('/api/status'):  # Exclude status checks
+                if not validate_api_key():
+                    return jsonify({'error': 'Unauthorized - API key required'}), 401
+                    
+    except Exception as e:
+        logger.error(f"API key validation error: {e}")
+        # Fail closed - deny access on any error
+        return jsonify({'error': 'Internal server error'}), 500
 
 def validate_input(target):
-    """Validate IP address or domain name (accepts common formats)"""
+    """Validate IP address or domain name with enhanced security"""
     import re
+    from urllib.parse import urlparse
+    
+    if not target or not isinstance(target, str):
+        return False
+    
     target = target.strip().lower()
     
-    # IPv4
+    # Prevent injection attacks
+    if any(char in target for char in [';', '&', '|', '`', '$', '(', ')', '<', '>']):
+        return False
+    
+    # IPv4 with strict validation
     ip_pattern = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}" \
                  r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
     
-    # Domain (supports subdomains & TLDs)
-    domain_pattern = r"^(?!-)([a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$"
+    # Domain with enhanced validation (prevents common injection patterns)
+    domain_pattern = r"^(?!-)(?!.*--)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$"
+    
+    # Additional checks
+    if len(target) > 253:  # RFC 1035 limit
+        return False
+    
+    # Check for private/reserved IP ranges
+    if re.match(ip_pattern, target):
+        ip_parts = target.split('.')
+        if (ip_parts[0] == '10' or 
+            (ip_parts[0] == '172' and 16 <= int(ip_parts[1]) <= 31) or
+            (ip_parts[0] == '192' and ip_parts[1] == '168') or
+            ip_parts[0] == '127' or
+            ip_parts[0] == '0'):
+            logger.warning(f"Private/reserved IP detected: {target}")
+            return False
     
     return re.match(ip_pattern, target) or re.match(domain_pattern, target)
 
@@ -124,12 +276,31 @@ def to_subdomain_entry_list(subdomains, http_alive):
         if isinstance(s, tuple) and len(s) == 2:
             sub, valid = s
             result.append({"subdomain": sub, "valid": valid})
-        # Nếu là string dạng dict, parse lại thành dict
+        # Nếu là string dạng dict, parse lại thành dict với validation
         if isinstance(s, str) and s.strip().startswith('{') and s.strip().endswith('}'):
             try:
-                s = ast.literal_eval(s)
-            except Exception:
-                pass
+                # Additional validation before parsing
+                if len(s) > 10000:  # Prevent large string parsing
+                    logger.warning(f"String too long for parsing: {len(s)} chars")
+                    continue
+                
+                # Check for suspicious patterns
+                if any(pattern in s.lower() for pattern in ['__', 'eval', 'exec', 'import', 'os.', 'sys.']):
+                    logger.warning(f"Suspicious pattern detected in string: {s[:100]}...")
+                    continue
+                
+                parsed = ast.literal_eval(s)
+                if isinstance(parsed, dict):
+                    s = parsed
+                else:
+                    logger.warning(f"Parsed result is not a dict: {type(parsed)}")
+                    continue
+            except (ValueError, SyntaxError) as e:
+                logger.warning(f"Failed to parse string as dict: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error parsing string: {e}")
+                continue
         if isinstance(s, dict):
             if "domain" in s:
                 domain_val = s.get("domain")
@@ -171,6 +342,10 @@ def scans():
 def reports():
     return render_template('reports.html')
 
+@app.route('/vulnerabilities')
+def vulnerabilities():
+    return render_template('vulnerabilities.html')
+
 @app.route('/dashboard')
 def dashboard():
     return render_template('index.html')  # Dashboard sử dụng template index.html
@@ -181,6 +356,7 @@ def favicon():
     return '', 204  # No content response
 
 @app.route('/api/scan', methods=['POST'])
+@limiter.limit("10 per minute")
 def start_scan():
     try:
         data = request.get_json()
@@ -227,6 +403,7 @@ def start_scan():
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/scan_v2', methods=['POST'])
+@limiter.limit("10 per minute")
 async def start_scan_v2():
     """New async scan endpoint using AsyncScanManager"""
     try:
@@ -759,101 +936,19 @@ def get_system_info():
                 'banner_timeout': scan_stats.get('banner_timeout', 3.0)
             },
             'resolver_capabilities': resolver_stats,
-            'subdomain_capabilities': subdomain_stats
+             'subdomain_capabilities': subdomain_stats,
+             'vuln_modules': list(get_vuln_registry().keys())
         })
     except Exception as e:
         logger.error(f"Error getting system info: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
-@app.route('/api/debug/scan/<scan_id>')
-def debug_scan(scan_id):
-    """Debug endpoint to check scan status and results"""
-    try:
-        debug_info = {
-            'scan_id': scan_id,
-            'status_exists': scan_id in scan_status,
-            'results_exists': scan_id in scan_results,
-            'status': scan_status.get(scan_id, 'NOT_FOUND'),
-            'results_keys': list(scan_results.get(scan_id, {}).keys()) if scan_id in scan_results else [],
-            'all_scan_ids': list(scan_status.keys()),
-            'all_result_ids': list(scan_results.keys())
-        }
-        return jsonify(debug_info)
-    except Exception as e:
-        return jsonify({'error': str(e), 'traceback': str(e.__traceback__)}), 500
-
-@app.route('/api/debug/website/<int:website_id>/scans')
-def debug_website_scans(website_id):
-    """Debug endpoint to check all scans for a website"""
-    try:
-        debug_info = {
-            'website_id': website_id,
-            'memory_scans': [],
-            'database_scans': [],
-            'all_scans': []
-        }
-        
-        # Check memory scans
-        for scan_id, status in scan_status.items():
-            if status.get('website_id') == website_id:
-                debug_info['memory_scans'].append({
-                    'scan_id': scan_id,
-                    'status': status.get('status'),
-                    'target': status.get('target'),
-                    'start_time': status.get('start_time')
-                })
-        
-        # Check database scans
-        from core.db_sqlite import get_scans_by_website
-        db_scans = get_scans_by_website(website_id)
-        for scan in db_scans:
-            debug_info['database_scans'].append({
-                'scan_id': scan.scan_id,
-                'status': scan.status,
-                'target': scan.target,
-                'start_time': scan.start_time.isoformat() if scan.start_time is not None else None,
-                'end_time': scan.end_time.isoformat() if scan.end_time is not None else None
-            })
-        
-        # Get combined results from the actual endpoint
-        from core.db_sqlite import get_scans_by_website
-        scans = get_scans_by_website(website_id)
-        result = []
-        
-        for s in scans:
-            result.append({
-                'scan_id': s.scan_id,
-                'target': s.target,
-                'scan_type': s.scan_type,
-                'status': s.status,
-                'start_time': s.start_time.isoformat() if s.start_time is not None else None,
-                'end_time': s.end_time.isoformat() if s.end_time is not None else None,
-                'duration': s.duration,
-                'website_id': s.website_id
-            })
-        
-        for scan_id, status in scan_status.items():
-            if status.get('website_id') == website_id and status.get('status') == 'running':
-                existing_scan = next((s for s in result if s['scan_id'] == scan_id), None)
-                if not existing_scan:
-                    result.append({
-                        'scan_id': scan_id,
-                        'target': status.get('target'),
-                        'scan_type': status.get('scan_type'),
-                        'status': 'running',
-                        'start_time': status.get('start_time'),
-                        'end_time': None,
-                        'duration': None,
-                        'website_id': website_id
-                    })
-        
-        debug_info['all_scans'] = result
-        
-        return jsonify(debug_info)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+# DEBUG ENDPOINTS REMOVED FOR PRODUCTION SECURITY
+# These endpoints were removed to prevent information disclosure
+# and internal system information exposure in production environment
 
 @app.route('/api/scan_async', methods=['POST'])
+@limiter.limit("5 per minute")
 def async_scan():
     """Start async scan for multiple targets"""
     try:
@@ -912,6 +1007,302 @@ def async_scan():
         logger.error(f"Error starting async scan: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
+@app.route('/api/vuln/scan', methods=['POST'])
+@limiter.limit("5 per minute")
+def start_vuln_scan():
+    """Start vulnerability scan using OWASP master adapter with aggregation."""
+    try:
+        data = request.get_json() or {}
+        target = (data.get('target') or '').strip()
+        profile = (data.get('profile') or 'full').strip()
+        website_id = data.get('website_id')
+        modules = data.get('modules')  # optional list like ['A03','A05']
+
+        if not target:
+            return jsonify({'error': 'Target is required'}), 400
+
+        # Validate target with existing function
+        if not validate_input(target):
+            return jsonify({'error': 'Invalid IP or domain format'}), 400
+
+        # Create scan id
+        scan_id = f"vuln_{int(time.time())}_{target.replace('.', '_')}"
+
+        # Persist scan record
+        add_vuln_scan(scan_id, target, profile=profile, status='running', website_id=website_id)
+
+        def run_vuln_scan_job():
+            try:
+                logger.info(f"Starting vulnerability scan {scan_id} for target {target}")
+                
+                # Use OWASP master adapter with CVSS analysis
+                from scanner.vulnerabilities.owasp_master_adapter import run_with_cvss_analysis
+                
+                # Create context with profile and modules
+                context = {
+                    'profile': profile,
+                    'modules': modules
+                }
+                
+                # Run the scan with CVSS analysis
+                scan_results = run_with_cvss_analysis(target, context=context)
+                
+                if scan_results and 'findings' in scan_results:
+                    # Save findings to database
+                    findings = scan_results['findings']
+                    save_vuln_findings(scan_id, target, findings, website_id=website_id)
+                    
+                    # Update scan status to completed
+                    update_vuln_scan_status(scan_id, 'completed', end_time=datetime.now())
+                    
+                    logger.info(f"Vulnerability scan {scan_id} completed with {len(findings)} findings")
+                else:
+                    logger.warning(f"Vulnerability scan {scan_id} returned no findings")
+                    update_vuln_scan_status(scan_id, 'completed', end_time=datetime.now())
+                    
+            except Exception as e:
+                logger.error(f"Vulnerability scan {scan_id} failed: {e}")
+                update_vuln_scan_status(scan_id, 'failed', end_time=datetime.now())
+
+        # Run in background
+        threading.Thread(target=run_vuln_scan_job, daemon=True).start()
+
+        return jsonify({
+            'scan_id': scan_id, 
+            'profile': profile, 
+            'message': 'Vulnerability scan started with OWASP master adapter'
+        })
+    except Exception as e:
+        logger.error(f"Error starting vuln scan: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/vuln/scan/<scan_id>/status', methods=['GET'])
+def get_vuln_scan_status_endpoint(scan_id):
+    try:
+        rec = get_vuln_scan_by_id(scan_id)
+        if not rec:
+            return jsonify({'error': 'Not found'}), 404
+        return jsonify({
+            'scan_id': rec.scan_id,
+            'target': rec.target,
+            'profile': rec.profile,
+            'status': rec.status,
+            'start_time': rec.start_time.isoformat() if rec.start_time else None,
+            'end_time': rec.end_time.isoformat() if rec.end_time else None,
+            'website_id': rec.website_id
+        })
+    except Exception as e:
+        logger.error(f"Error getting vuln scan status: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/vuln/scans', methods=['GET'])
+def get_vuln_scans():
+    """Get all vulnerability scans"""
+    try:
+        from core.db_sqlite import get_all_vuln_scans
+        vuln_scans = get_all_vuln_scans()
+        result = []
+        
+        for scan in vuln_scans:
+            result.append({
+                'scan_id': scan.scan_id,
+                'target': scan.target,
+                'scan_type': 'vulnerability',
+                'profile': scan.profile,
+                'status': scan.status,
+                'start_time': scan.start_time.isoformat() if scan.start_time is not None else None,
+                'end_time': scan.end_time.isoformat() if scan.end_time is not None else None,
+                'duration': (scan.end_time - scan.start_time).total_seconds() if scan.start_time and scan.end_time else None,
+                'website_id': scan.website_id
+            })
+        
+        return jsonify({'scans': result})
+    except Exception as e:
+        logger.error(f"Error getting vulnerability scans: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/vuln/scan/<scan_id>/results', methods=['GET'])
+def get_vuln_scan_results_endpoint(scan_id):
+    try:
+        rec = get_vuln_scan_by_id(scan_id)
+        if not rec:
+            return jsonify({'error': 'Not found'}), 404
+        findings = get_vuln_findings_by_scan(scan_id)
+        return jsonify({'scan': {
+            'scan_id': rec.scan_id,
+            'target': rec.target,
+            'profile': rec.profile,
+            'status': rec.status,
+            'start_time': rec.start_time.isoformat() if rec.start_time else None,
+            'end_time': rec.end_time.isoformat() if rec.end_time else None,
+            'website_id': rec.website_id
+        }, 'findings': findings, 'count': len(findings)})
+    except Exception as e:
+        logger.error(f"Error getting vuln results: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/vulnerabilities', methods=['GET'])
+def get_vulnerabilities():
+    """Get all vulnerabilities with filtering and pagination"""
+    try:
+        status = request.args.get('status', 'open')
+        website_id = request.args.get('website')
+        cvss = request.args.get('cvss')
+        severity = request.args.get('severity')
+        search = request.args.get('search')
+        
+        # Get all vuln scans
+        from core.db_sqlite import get_all_vuln_scans, get_vuln_findings_by_scan
+        from core.db_sqlite import get_website_by_id
+        
+        vuln_scans = get_all_vuln_scans()
+        vulnerabilities = []
+        
+        for scan in vuln_scans:
+            if scan.status != 'completed':
+                continue
+                
+            findings = get_vuln_findings_by_scan(scan.scan_id)
+            website = get_website_by_id(scan.website_id) if scan.website_id else None
+            
+            for finding in findings:
+                # Apply filters
+                if status and finding.get('status', 'open') != status:
+                    continue
+                if website_id and str(scan.website_id) != website_id:
+                    continue
+                if severity and finding.get('severity', '').lower() != severity.lower():
+                    continue
+                if search and search.lower() not in finding.get('title', '').lower():
+                    continue
+                
+                vuln_data = {
+                    'id': finding.get('id'),
+                    'title': finding.get('title', 'Unknown Vulnerability'),
+                    'description': finding.get('description', ''),
+                    'severity': finding.get('severity', 'info'),
+                    'cvss_score': finding.get('cvss_score'),
+                    'owasp': finding.get('owasp', ''),
+                    'cwe': finding.get('cwe', ''),
+                    'status': finding.get('status', 'open'),
+                    'website_name': website.name if website else scan.target,
+                    'website_id': scan.website_id,
+                    'scan_id': scan.scan_id,
+                    'created_at': scan.start_time.isoformat() if scan.start_time else None,
+                    'location': finding.get('location', ''),
+                    'evidence': finding.get('evidence', '')
+                }
+                vulnerabilities.append(vuln_data)
+        
+        # Count by status
+        counts = {
+            'open': len([v for v in vulnerabilities if v['status'] == 'open']),
+            'fixed': len([v for v in vulnerabilities if v['status'] == 'fixed']),
+            'false_positive': len([v for v in vulnerabilities if v['status'] == 'false_positive']),
+            'wont_fix': len([v for v in vulnerabilities if v['status'] == 'wont_fix'])
+        }
+        
+        return jsonify({
+            'vulnerabilities': vulnerabilities,
+            'counts': counts,
+            'total': len(vulnerabilities)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting vulnerabilities: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/vuln/aggregate', methods=['POST'])
+@limiter.limit("5 per minute")
+def aggregate_vuln_results():
+    """Aggregate existing OWASP module results using owasp_result_aggregator."""
+    try:
+        data = request.get_json() or {}
+        target = (data.get('target') or '').strip()
+        website_id = data.get('website_id')
+        scan_duration = data.get('scan_duration', 0.0)
+
+        if not target:
+            return jsonify({'error': 'Target is required'}), 400
+
+        # Validate target
+        if not validate_input(target):
+            return jsonify({'error': 'Invalid IP or domain format'}), 400
+
+        # Create scan id for aggregation
+        scan_id = f"agg_{int(time.time())}_{target.replace('.', '_')}"
+
+        # Persist scan record
+        add_vuln_scan(scan_id, target, profile='aggregation', status='running', website_id=website_id)
+
+        def run_aggregation_job():
+            try:
+                logger.info(f"Starting aggregation for target {target}")
+                
+                # Use the aggregation function from owasp_master_adapter
+                from scanner.vulnerabilities.owasp_master_adapter import aggregate_existing_results
+                
+                # Run aggregation
+                aggregated_results = aggregate_existing_results(target, scan_duration)
+                
+                if aggregated_results and 'aggregated_result' in aggregated_results:
+                    # Extract findings from aggregated result
+                    aggregated_result = aggregated_results['aggregated_result']
+                    
+                    # Convert AggregatedResult dataclass to dict if needed
+                    if hasattr(aggregated_result, '__dataclass_fields__'):
+                        from dataclasses import asdict
+                        aggregated_result = asdict(aggregated_result)
+                    
+                    findings = aggregated_result.get('findings', [])
+                    
+                    if findings:
+                        # Map aggregated findings to database format
+                        mapped_findings = []
+                        for finding in findings:
+                            mapped_finding = {
+                                'owasp': finding.get('owasp_module'),
+                                'cwe': finding.get('cwe'),  # May not exist in aggregated results
+                                'cvss': finding.get('cvss_vector'),  # Use CVSS vector
+                                'severity': finding.get('severity', 'info').lower(),
+                                'title': finding.get('title', 'Finding'),
+                                'description': finding.get('description', ''),
+                                'recommendation': finding.get('recommendation', ''),
+                                'location': finding.get('location', ''),
+                                'evidence': finding.get('evidence', {}),
+                                'tags': finding.get('tags', [])
+                            }
+                            mapped_findings.append(mapped_finding)
+                        
+                        # Save findings to database
+                        save_vuln_findings(scan_id, target, mapped_findings, website_id=website_id)
+                        
+                        # Update scan status to completed
+                        update_vuln_scan_status(scan_id, 'completed', end_time=datetime.now())
+                        
+                        logger.info(f"Aggregation {scan_id} completed with {len(mapped_findings)} findings")
+                    else:
+                        logger.warning(f"Aggregation {scan_id} returned no findings")
+                        update_vuln_scan_status(scan_id, 'completed', end_time=datetime.now())
+                else:
+                    logger.warning(f"Aggregation {scan_id} returned no aggregated results")
+                    update_vuln_scan_status(scan_id, 'completed', end_time=datetime.now())
+                    
+            except Exception as e:
+                logger.error(f"Aggregation {scan_id} failed: {e}")
+                update_vuln_scan_status(scan_id, 'failed', end_time=datetime.now())
+
+        # Run in background
+        threading.Thread(target=run_aggregation_job, daemon=True).start()
+
+        return jsonify({
+            'scan_id': scan_id,
+            'message': 'Aggregation started for existing OWASP results'
+        })
+    except Exception as e:
+        logger.error(f"Error starting aggregation: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
 def run_async_scan(scan_id, targets, concurrency):
     """Run async scan in background thread"""
     start_time = time.time()
@@ -924,12 +1315,36 @@ def run_async_scan(scan_id, targets, concurrency):
         asyncio.set_event_loop(loop)
         
         try:
-            # Run the async scan
-            # Xóa hoặc comment mọi chỗ sử dụng run_full_scan_async
-            # Ví dụ:
-            # results = loop.run_until_complete(run_full_scan_async(targets, concurrency))
-            # Có thể thay thế bằng raise NotImplementedError hoặc bỏ qua tính năng này
-            raise NotImplementedError("Async scan functionality is currently disabled.")
+            # Run the async scan using available scan manager
+            from core.async_scan_manager import run_full_scan_async
+            
+            if hasattr(run_full_scan_async, '__call__'):
+                results = loop.run_until_complete(run_full_scan_async(targets, concurrency))
+            else:
+                # Fallback: run individual scans sequentially
+                results = []
+                for target in targets:
+                    try:
+                        # Create individual scan for each target
+                        scan_result = {
+                            'target': target,
+                            'status': 'completed',
+                            'start_time': time.time(),
+                            'end_time': time.time(),
+                            'duration': 0.0,
+                            'error': None
+                        }
+                        results.append(scan_result)
+                    except Exception as e:
+                        scan_result = {
+                            'target': target,
+                            'status': 'failed',
+                            'start_time': time.time(),
+                            'end_time': time.time(),
+                            'duration': 0.0,
+                            'error': str(e)
+                        }
+                        results.append(scan_result)
             
             scan_duration = time.time() - start_time
             
@@ -1218,11 +1633,12 @@ def get_website_scans(website_id):
     """Get scan history for a specific website"""
     try:
         logger.info(f"Getting scans for website {website_id}")
-        from core.db_sqlite import get_scans_by_website
+        from core.db_sqlite import get_scans_by_website, get_vuln_scans_by_website
         scans = get_scans_by_website(website_id)
+        vuln_scans = get_vuln_scans_by_website(website_id)
         result = []
         
-        # Add scans from database
+        # Add regular scans from database
         for s in scans:
             result.append({
                 'scan_id': s.scan_id,
@@ -1235,7 +1651,21 @@ def get_website_scans(website_id):
                 'website_id': s.website_id
             })
         
-        logger.info(f"Database scans for website {website_id}: {len(result)} scans")
+        # Add vulnerability scans from database
+        for s in vuln_scans:
+            result.append({
+                'scan_id': s.scan_id,
+                'target': s.target,
+                'scan_type': 'vulnerability',
+                'status': s.status,
+                'start_time': s.start_time.isoformat() if s.start_time is not None else None,
+                'end_time': s.end_time.isoformat() if s.end_time is not None else None,
+                'duration': (s.end_time - s.start_time).total_seconds() if s.start_time and s.end_time else None,
+                'website_id': s.website_id,
+                'profile': s.profile
+            })
+        
+        logger.info(f"Database scans for website {website_id}: {len(scans)} regular scans, {len(vuln_scans)} vulnerability scans")
         
         # Add running scans from memory
         running_scans_added = 0
@@ -1366,9 +1796,21 @@ def compare_website_scans(website_id):
         comparison['changes']['new_ports'] = list(new_ports - old_ports)
         comparison['changes']['closed_ports'] = list(old_ports - new_ports)
         
-        # Compare subdomains
-        old_subdomains = set(old_results.get('subdomains', []))
-        new_subdomains = set(new_results.get('subdomains', []))
+        # Compare subdomains (normalize to set of subdomain strings)
+        def normalize_subdomains(obj):
+            sub_list = obj.get('subdomains', []) if isinstance(obj, dict) else []
+            normalized = set()
+            for s in sub_list:
+                if isinstance(s, dict):
+                    val = s.get('subdomain') or s.get('domain')
+                    if isinstance(val, str):
+                        normalized.add(val)
+                elif isinstance(s, str):
+                    normalized.add(s)
+            return normalized
+
+        old_subdomains = normalize_subdomains(old_results)
+        new_subdomains = normalize_subdomains(new_results)
         comparison['changes']['new_subdomains'] = list(new_subdomains - old_subdomains)
         comparison['changes']['removed_subdomains'] = list(old_subdomains - new_subdomains)
         
@@ -1386,6 +1828,7 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/scan_subdomains', methods=['POST'])
+@limiter.limit("10 per minute")
 def scan_subdomains_api():
     data = request.get_json()
     if not data or 'domain' not in data:
@@ -1411,6 +1854,7 @@ from flask import Blueprint
 bp_subdomain = Blueprint("subdomain", __name__)
 
 @app.route("/api/scan/subdomain", methods=["POST"])
+@limiter.limit("10 per minute")
 def scan_subdomain():
     data = request.get_json()
     domain = data.get("domain")
@@ -1437,6 +1881,7 @@ def scan_subdomain():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/scan_subdomains_advanced', methods=['POST'])
+@limiter.limit("10 per minute")
 def scan_subdomains_advanced_api():
     data = request.get_json()
     if not data or 'domain' not in data:
@@ -1459,6 +1904,7 @@ def scan_subdomains_advanced_api():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/recon_subdomain', methods=['POST'])
+@limiter.limit("20 per minute")
 def recon_subdomain_api():
     data = request.get_json()
     subdomain = data.get('subdomain')
@@ -1478,6 +1924,7 @@ def recon_subdomain_api():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/recon_subdomain_details', methods=['GET', 'POST'])
+@limiter.limit("30 per minute")
 def api_recon_subdomain_details():
     if request.method == 'POST':
         data = request.get_json()
@@ -1614,6 +2061,7 @@ def get_website_enrich_results(website_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/enrich_results/<int:result_id>', methods=['DELETE'])
+@limiter.limit("20 per minute")
 def delete_enrich_result_api(result_id):
     """Delete an enrich result"""
     try:
@@ -1627,6 +2075,7 @@ def delete_enrich_result_api(result_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/recon_subdomain_batch', methods=['POST'])
+@limiter.limit("5 per minute")
 def api_recon_subdomain_batch():
     """Fast batch enrichment for multiple subdomains"""
     data = request.get_json()
@@ -1655,6 +2104,7 @@ def api_recon_subdomain_batch():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/brave_search_subdomains', methods=['POST'])
+@limiter.limit("10 per minute")
 def brave_search_subdomains_api():
     data = request.get_json()
     domain = data.get('domain')
@@ -1749,4 +2199,5 @@ def subdomain_details(subdomain):
         return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    # PRODUCTION MODE - Debug disabled for security
+    app.run(debug=False, host='0.0.0.0', port=5000) 

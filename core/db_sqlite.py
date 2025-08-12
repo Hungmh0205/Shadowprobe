@@ -2,6 +2,10 @@ from sqlalchemy import Column, String, Float, DateTime, Text, create_engine, Int
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 import json
+import logging
+
+# Create a logger for this module
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -64,6 +68,37 @@ class EnrichResults(Base):
     enrich_time = Column(DateTime, default=datetime.utcnow)
     website_id = Column(Integer, nullable=True)  # Liên kết với website
 
+class VulnScan(Base):
+    __tablename__ = 'vuln_scans'
+
+    scan_id = Column(String, primary_key=True)
+    target = Column(String, nullable=False)
+    profile = Column(String, nullable=True)  # quick/full/custom
+    status = Column(String, nullable=False, default='running')
+    start_time = Column(DateTime, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
+    parent_scan_id = Column(String, nullable=True)  # optional link to normal scan
+    website_id = Column(Integer, nullable=True)
+
+class VulnFinding(Base):
+    __tablename__ = 'vuln_findings'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scan_id = Column(String, nullable=False)
+    target = Column(String, nullable=False)
+    owasp = Column(String, nullable=True)
+    cwe = Column(String, nullable=True)
+    cvss = Column(String, nullable=True)
+    severity = Column(String, nullable=False, default='info')
+    title = Column(String, nullable=False)
+    description = Column(Text)
+    recommendation = Column(Text)
+    location = Column(String, nullable=True)
+    evidence = Column(Text)  # JSON
+    tags = Column(Text)  # JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+    website_id = Column(Integer, nullable=True)
+
 DATABASE_URL = 'sqlite:///db/history.db'
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -98,6 +133,39 @@ def init_db():
             cursor.execute("ALTER TABLE scan_results ADD COLUMN website_id INTEGER")
             print("✓ Added website_id to scan_results")
         
+        # Ensure vuln tables exist (idempotent)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vuln_scans (
+                scan_id TEXT PRIMARY KEY,
+                target TEXT NOT NULL,
+                profile TEXT,
+                status TEXT NOT NULL,
+                start_time DATETIME,
+                end_time DATETIME,
+                parent_scan_id TEXT,
+                website_id INTEGER
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vuln_findings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scan_id TEXT NOT NULL,
+                target TEXT NOT NULL,
+                owasp TEXT,
+                cwe TEXT,
+                cvss TEXT,
+                severity TEXT,
+                title TEXT,
+                description TEXT,
+                recommendation TEXT,
+                location TEXT,
+                evidence TEXT,
+                tags TEXT,
+                created_at DATETIME,
+                website_id INTEGER
+            )
+        """)
+
         conn.commit()
         conn.close()
         print("✓ Database migration completed successfully!")
@@ -126,6 +194,145 @@ def add_scan(scan_id, target, scan_type, start_time, end_time, duration, status,
     except Exception as e:
         db.rollback()
         raise e
+    finally:
+        db.close()
+
+
+def add_vuln_scan(scan_id, target, profile='full', status='running', start_time=None, end_time=None, parent_scan_id=None, website_id=None):
+    db = SessionLocal()
+    try:
+        start_time = start_time or datetime.utcnow()
+        record = VulnScan(
+            scan_id=scan_id,
+            target=target,
+            profile=profile,
+            status=status,
+            start_time=start_time,
+            end_time=end_time,
+            parent_scan_id=parent_scan_id,
+            website_id=website_id
+        )
+        db.add(record)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+def update_vuln_scan_status(scan_id, status, end_time=None):
+    db = SessionLocal()
+    try:
+        record = db.query(VulnScan).filter(VulnScan.scan_id == scan_id).first()
+        if record:
+            record.status = status
+            if end_time is not None:
+                record.end_time = end_time
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+def save_vuln_findings(scan_id, target, findings, website_id=None):
+    db = SessionLocal()
+    try:
+        for f in findings or []:
+            evidence_json = json.dumps(f.get('evidence', {}), ensure_ascii=False)
+            tags_json = json.dumps(f.get('tags', []), ensure_ascii=False)
+            record = VulnFinding(
+                scan_id=scan_id,
+                target=target,
+                owasp=f.get('owasp'),
+                cwe=f.get('cwe'),
+                cvss=f.get('cvss'),
+                severity=f.get('severity', 'info'),
+                title=f.get('title', 'Finding'),
+                description=f.get('description'),
+                recommendation=f.get('recommendation'),
+                location=f.get('location'),
+                evidence=evidence_json,
+                tags=tags_json,
+                website_id=website_id
+            )
+            db.add(record)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+def get_vuln_scan_by_id(scan_id):
+    db = SessionLocal()
+    try:
+        return db.query(VulnScan).filter(VulnScan.scan_id == scan_id).first()
+    finally:
+        db.close()
+
+def get_vuln_findings_by_scan(scan_id):
+    db = SessionLocal()
+    try:
+        rows = db.query(VulnFinding).filter(VulnFinding.scan_id == scan_id).all()
+        results = []
+        for r in rows:
+            results.append({
+                'id': r.id,
+                'scan_id': r.scan_id,
+                'target': r.target,
+                'owasp': r.owasp,
+                'cwe': r.cwe,
+                'cvss': r.cvss,
+                'severity': r.severity,
+                'title': r.title,
+                'description': r.description,
+                'recommendation': r.recommendation,
+                'location': r.location,
+                'evidence': json.loads(r.evidence) if r.evidence else {},
+                'tags': json.loads(r.tags) if r.tags else [],
+                'created_at': r.created_at.isoformat() if r.created_at else None,
+                'website_id': r.website_id
+            })
+        return results
+    finally:
+        db.close()
+
+def get_all_vuln_scans():
+    """Get all vulnerability scans"""
+    db = SessionLocal()
+    try:
+        scans = db.query(VulnScan).order_by(VulnScan.start_time.desc()).all()
+        return scans
+    except Exception as e:
+        logger.error(f"Error getting all vuln scans: {e}")
+        return []
+    finally:
+        db.close()
+
+def get_vuln_scans_by_website(website_id):
+    """Get all vulnerability scans for a specific website"""
+    db = SessionLocal()
+    try:
+        scans = db.query(VulnScan).filter(VulnScan.website_id == website_id).order_by(VulnScan.start_time.desc()).all()
+        return scans
+    except Exception as e:
+        logger.error(f"Error getting vuln scans by website: {e}")
+        return []
+    finally:
+        db.close()
+
+def get_website_by_id(website_id):
+    """Get website by ID"""
+    db = SessionLocal()
+    try:
+        website = db.query(Website).filter(Website.id == website_id).first()
+        return website
+    except Exception as e:
+        logger.error(f"Error getting website by ID: {e}")
+        return None
     finally:
         db.close()
 

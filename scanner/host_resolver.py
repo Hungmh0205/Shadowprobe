@@ -59,20 +59,19 @@ class HostResolver:
         return None
 
     async def reverse_dns_with_retry(self, ip: str, sem: asyncio.Semaphore) -> Optional[str]:
-        """Reverse DNS lookup with retry mechanism"""
+        """Reverse DNS lookup with retry mechanism using gethostbyaddr"""
         if not ip or not ip.strip():
             return None
-            
+
         for attempt in range(self.max_retries):
             async with sem:
                 try:
-                    # Try PTR record
                     result = await asyncio.wait_for(
-                        self.resolver.query(ip, 'PTR'),
+                        self.resolver.gethostbyaddr(ip),
                         timeout=self.timeout
                     )
-                    if result:
-                        return result[0].hostname
+                    if result and getattr(result, 'name', None):
+                        return result.name.rstrip('.')
                 except asyncio.TimeoutError:
                     logger.debug(f"Reverse DNS timeout for {ip} on attempt {attempt + 1}")
                     if attempt < self.max_retries - 1:
@@ -83,7 +82,7 @@ class HostResolver:
                     if attempt < self.max_retries - 1:
                         await asyncio.sleep(1)
                         continue
-        
+
         return None
 
     def is_valid_ip(self, ip: str) -> bool:

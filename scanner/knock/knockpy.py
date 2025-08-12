@@ -1,3 +1,4 @@
+from core.security_utils import SecurityUtils
 #!/usr/bin/env python3
 
 from datetime import datetime, date
@@ -810,7 +811,6 @@ async def enrich_one_subdomain(sub, domain=None, timeout=5):
         result["cert"] = {"error": str(e)}
     
     return result
-    return result
 
 # === EXPORTABLE API ===
 
@@ -994,7 +994,7 @@ def scan_subdomains_cli(domain):
         '--json'
     ]
     print(f"[knockpy] Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = SecurityUtils.safe_subprocess_run(" ".join(cmd), timeout=300)
     try:
         output = result.stdout
         lines = output.strip().splitlines()

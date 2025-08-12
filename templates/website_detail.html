@@ -31,8 +31,8 @@
           </a>
         </li>
         <li>
-          <a href="#" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
-            <i class="fas fa-bug mr-3"></i> Vulnerabilities
+          <a href="/vulnerabilities" class="flex items-center px-6 py-3 hover:bg-gray-800 rounded-r-full font-medium">
+            <i class="fas fa-shield-alt mr-3"></i> Vulnerabilities
           </a>
         </li>
         <li>
@@ -168,20 +168,87 @@
           </div>
         </div>
       </div>
-      <!-- Tab content: Vulnerabilities (placeholder) -->
+      <!-- Tab content: Vulnerabilities -->
       <div id="tab-vulns" class="hidden">
         <div class="p-6">
-          <div class="flex flex-col items-center justify-center py-24">
-            <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">
-              <rect x="8" y="24" width="80" height="56" rx="8" fill="#F3F4F6"/>
-              <rect x="8" y="24" width="80" height="12" fill="#E5E7EB"/>
-              <circle cx="20" cy="30" r="2" fill="#D1D5DB"/>
-              <circle cx="28" cy="30" r="2" fill="#D1D5DB"/>
-              <circle cx="36" cy="30" r="2" fill="#D1D5DB"/>
-              <rect x="40" y="56" width="16" height="2" rx="1" fill="#D1D5DB"/>
-              <circle cx="48" cy="48" r="4" fill="#D1D5DB"/>
-            </svg>
-            <div class="text-gray-400 text-lg mb-4">Vulnerabilities tab content...</div>
+          <!-- Filters Section -->
+          <div class="flex space-x-4 mb-6">
+            <div class="flex flex-col">
+              <label class="text-xs text-gray-500 mb-1 ml-1">Status</label>
+              <select id="vuln-status-filter" class="border border-gray-200 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[160px]">
+                <option value="open" selected>Open</option>
+                <option value="closed">Closed</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="flex flex-col">
+              <label class="text-xs text-gray-500 mb-1 ml-1">CVSS Score</label>
+              <select id="vuln-cvss-filter" class="border border-gray-200 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[160px]">
+                <option value="">--</option>
+                <option value="critical">Critical (9.0-10.0)</option>
+                <option value="high">High (7.0-8.9)</option>
+                <option value="medium">Medium (4.0-6.9)</option>
+                <option value="low">Low (0.1-3.9)</option>
+              </select>
+            </div>
+            <div class="flex flex-col">
+              <label class="text-xs text-gray-500 mb-1 ml-1">Severity</label>
+              <select id="vuln-severity-filter" class="border border-gray-200 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[160px]">
+                <option value="">--</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="info">Info</option>
+              </select>
+            </div>
+            <input type="text" id="vuln-search" placeholder="Search" class="border border-gray-200 rounded px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 flex-1 self-end" />
+          </div>
+          
+          <!-- Content Area -->
+          <div id="vuln-content" class="bg-white rounded-lg shadow">
+            <!-- Empty State -->
+            <div id="vuln-empty-state" class="flex flex-col items-center justify-center py-24">
+              <svg width="96" height="96" fill="none" viewBox="0 0 96 96" class="mb-6 opacity-80">
+                <!-- Browser window with sad face and broken connection -->
+                <rect x="8" y="24" width="80" height="56" rx="8" fill="#F3F4F6"/>
+                <rect x="8" y="24" width="80" height="12" fill="#E5E7EB"/>
+                <circle cx="20" cy="30" r="2" fill="#D1D5DB"/>
+                <circle cx="28" cy="30" r="2" fill="#D1D5DB"/>
+                <circle cx="36" cy="30" r="2" fill="#D1D5DB"/>
+                <!-- Sad face -->
+                <circle cx="40" cy="45" r="3" fill="#D1D5DB"/>
+                <circle cx="56" cy="45" r="3" fill="#D1D5DB"/>
+                <path d="M 35 55 Q 48 65 61 55" stroke="#D1D5DB" stroke-width="2" fill="none"/>
+                <!-- Broken connection lines -->
+                <path d="M 20 70 L 30 70" stroke="#EF4444" stroke-width="2"/>
+                <path d="M 40 70 L 50 70" stroke="#EF4444" stroke-width="2"/>
+                <path d="M 60 70 L 70 70" stroke="#EF4444" stroke-width="2"/>
+                <circle cx="30" cy="70" r="2" fill="#EF4444"/>
+                <circle cx="50" cy="70" r="2" fill="#EF4444"/>
+              </svg>
+              <div class="text-gray-400 text-lg mb-4">There aren't any results for that query.</div>
+              <button id="vuln-scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded font-semibold shadow">Scan Now</button>
+            </div>
+            
+            <!-- Results Table (hidden by default) -->
+            <div id="vuln-results-table" class="hidden">
+              <table class="min-w-full">
+                <thead>
+                  <tr class="border-b">
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Severity</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CVSS</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">OWASP</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="vuln-findings-list">
+                  <!-- Results will be populated here -->
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -461,6 +528,32 @@
 
         // Check for active scan when page loads
         checkActiveScan();
+
+        // === Vulnerability scan integration ===
+        const vulnBtn = document.getElementById('vuln-scan-btn');
+        const vulnStatus = document.getElementById('vuln-status');
+        const vulnResults = document.getElementById('vuln-results');
+        const vulnCount = document.getElementById('vuln-count');
+        const vulnList = document.getElementById('vuln-findings-list');
+
+        if (vulnBtn) {
+          vulnBtn.addEventListener('click', () => {
+            // Redirect to scans page with parameter to open modal and set scan type to vulnerability
+            window.location.href = '/scans?newscan=1&scanType=vulnerability';
+          });
+        }
+
+
+
+        function escapeHtml(str) {
+          if (typeof str !== 'string') return '';
+          return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        }
 
         // --- Render functions ---
         function renderSummary(result) {
@@ -1167,6 +1260,80 @@
           };
           
           poll();
+        }
+
+        // === Vulnerability Filters and Search ===
+        document.addEventListener('DOMContentLoaded', function() {
+          // Get filter elements
+          const statusFilter = document.getElementById('vuln-status-filter');
+          const cvssFilter = document.getElementById('vuln-cvss-filter');
+          const severityFilter = document.getElementById('vuln-severity-filter');
+          const searchInput = document.getElementById('vuln-search');
+
+          // Add event listeners for filters
+          if (statusFilter) {
+            statusFilter.addEventListener('change', filterVulnerabilities);
+          }
+          if (cvssFilter) {
+            cvssFilter.addEventListener('change', filterVulnerabilities);
+          }
+          if (severityFilter) {
+            severityFilter.addEventListener('change', filterVulnerabilities);
+          }
+          if (searchInput) {
+            searchInput.addEventListener('input', filterVulnerabilities);
+          }
+        });
+
+        // Function to filter vulnerabilities
+        function filterVulnerabilities() {
+          const statusFilter = document.getElementById('vuln-status-filter');
+          const cvssFilter = document.getElementById('vuln-cvss-filter');
+          const severityFilter = document.getElementById('vuln-severity-filter');
+          const searchInput = document.getElementById('vuln-search');
+
+          const status = statusFilter ? statusFilter.value : '';
+          const cvss = cvssFilter ? cvssFilter.value : '';
+          const severity = severityFilter ? severityFilter.value : '';
+          const search = searchInput ? searchInput.value.toLowerCase() : '';
+
+          // For now, since we don't have vulnerability data loaded,
+          // we'll just show the empty state
+          // In the future, this would filter the actual vulnerability data
+          console.log('Filtering vulnerabilities:', { status, cvss, severity, search });
+          
+          // Show empty state for now
+          showVulnerabilityEmptyState();
+        }
+
+        // Function to show empty state
+        function showVulnerabilityEmptyState() {
+          const emptyState = document.getElementById('vuln-empty-state');
+          const resultsTable = document.getElementById('vuln-results-table');
+          
+          if (emptyState) emptyState.classList.remove('hidden');
+          if (resultsTable) resultsTable.classList.add('hidden');
+        }
+
+        // Function to show results table
+        function showVulnerabilityResults() {
+          const emptyState = document.getElementById('vuln-empty-state');
+          const resultsTable = document.getElementById('vuln-results-table');
+          
+          if (emptyState) emptyState.classList.add('hidden');
+          if (resultsTable) resultsTable.classList.remove('hidden');
+        }
+
+        // Function to load vulnerability data (placeholder for future implementation)
+        async function loadVulnerabilityData() {
+          try {
+            // This would fetch vulnerability data from the API
+            // For now, we'll just show the empty state
+            showVulnerabilityEmptyState();
+          } catch (error) {
+            console.error('Error loading vulnerability data:', error);
+            showVulnerabilityEmptyState();
+          }
         }
       </script>
     </main>

@@ -15,7 +15,7 @@ def restart_server():
     try:
         # Kill existing process if running
         try:
-            subprocess.run(['taskkill', '/f', '/im', 'python.exe'], 
+            SecurityUtils.safe_subprocess_run(['taskkill', '/f', '/im', 'python.exe'], 
                          capture_output=True, timeout=5)
             print("✅ Stopped existing processes")
         except:
@@ -26,7 +26,7 @@ def restart_server():
         
         # Start server
         print("🚀 Starting server...")
-        subprocess.run([sys.executable, 'start.py'])
+        SecurityUtils.safe_subprocess_run([sys.executable, 'start.py'])
         
     except KeyboardInterrupt:
         print("\n👋 Server stopped by user")

@@ -117,7 +117,7 @@ def install_requirements():
     
     try:
         import subprocess
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], 
+        result = SecurityUtils.safe_subprocess_run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], 
                               capture_output=True, text=True)
         
         if result.returncode == 0:
